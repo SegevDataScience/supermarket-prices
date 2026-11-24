@@ -189,7 +189,7 @@ SEARCH_JS = r'''<script>
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const N = (s) => String(s || "").toLowerCase().replace(/["'״׳`.,()\-*\/+%!?:;]/g, " ")
     .replace(/ך/g, "כ").replace(/ם/g, "מ").replace(/ן/g, "נ").replace(/ף/g, "פ").replace(/ץ/g, "צ").replace(/\s+/g, " ").trim();
-  const OTHER = /חתול|כלב|לחיות|פנסי ?פיסט|פריסקיז|ויסקס|פדיגרי|בטעמ|ממרח|צ ?יפס|פופקו|פריכ|ספרינג|משקה|מגבונ|לילד|לתינוק|תינוק|במלח|בחומצ|כבוש|חמוצ|שימור|קפוא|מיובש|מוחמצ|במילוי|ממולא|רביעי|שישי|שלישי|מארז|זוג(?![א-ת])/;
+  const OTHER = /אדמה|קינדר|הפתעה|שוקולד|בונבון|בון בון|חתול|כלב|לחיות|פנסי ?פיסט|פריסקיז|ויסקס|פדיגרי|בטעמ|ממרח|צ ?יפס|פופקו|פריכ|ספרינג|משקה|מגבונ|לילד|לתינוק|תינוק|במלח|בחומצ|כבוש|חמוצ|שימור|קפוא|מיובש|מוחמצ|במילוי|ממולא|רביעי|שישי|שלישי|מארז|זוג(?![א-ת])/;
   const UNITW = /^(גרמ|גר|ג|ליטר|ל|מל|מ"ל|יח|יחידות|קג|קילו|גרמים)$/;
   const SIZE = /(\d+(?:\.\d+)?)\s*(ק"?ג|קג|קילו|גרמ|גר|ג|ליטר|ל|מ"?ל|מל|יח)(?![א-ת])/;
   const km = (a, b) => { const r = Math.PI / 180, dl = (b[0] - a[0]) * r, dn = (b[1] - a[1]) * r;
@@ -272,8 +272,13 @@ SEARCH_JS = r'''<script>
   }
 
   // ---------- matching (same rules as before) ----------
+  // the same word in another form: compared without its Hebrew ending (עגבניה = עגבניות, ביצה = ביצים, גבינה = גבינת),
+  // and never a different word that only starts the same (קורנפלקס / קורנפלור, סוכר / סוכריות)
+  const END = /(ימ|ות|יה|ה|י|ת)$/;
+  const stem1 = (w) => { const r = w.replace(END, ""); return r.length >= 3 ? r : w; };
+  const stem2 = (w) => { const r = stem1(stem1(w)); return r.length >= 4 ? r : null; };  // a second ending only on a long word
   const wordOk = (q, w) => (q.length <= 3 ? w === q || w === q + "ימ" || w === q + "ות"
-    : w.startsWith(q.slice(0, 4)) && Math.abs(w.length - q.length) <= 2);
+    : Math.abs(w.length - q.length) <= 2 && (w === q || stem1(w) === stem1(q) || (stem2(w) !== null && stem2(w) === stem2(q))));
   const size = (name) => { const m = N(name).match(SIZE); return m ? m[1] + m[2][0] : null; };
   // pack size in grams / ml (kg and litre x1000), to keep substitutes to a similar size
   const amount = (name) => { const m = String(name).replace(/ם/g, "מ").replace(/ן/g, "נ").match(SIZE); if (!m) return null; const v = parseFloat(m[1]), u = m[2];
@@ -287,6 +292,21 @@ SEARCH_JS = r'''<script>
   }
   const known = (w) => (w.length <= 3 ? VOCAB.has(w) || VOCAB.has(w + "ימ") || VOCAB.has(w + "ות") : PREF4.has(w.slice(0, 4)));
   const STOP = new Set(["של", "עם", "בלי", "גם", "את", "או", "וגם", "קצת", "הרבה", "כמה", "יחידה", "יחידות", "חבילה", "חבילות", "אריזה", "בקבוק", "בקבוקי", "בקבוקים", "פחית", "פחיות", "קופסה", "קופסת", "קופסאות", "שקית", "שקיות", "חבילת"]);
+  // ---------- one spelling for the same thing ----------
+  // "5 אחוז" = "5 אחוזים" = "5אחוז" = "5 %" = "5%"; "1,5" = "1.5"; "חצי ליטר" = "0.5 ליטר"; ׳ = '
+  const PCT_RE = /(\d+(?:\.\d+)?)%/;
+  function prep(text) {
+    return String(text || "")
+      .replace(/[׳`’‘]/g, "'").replace(/[״“”]/g, '"')
+      .replace(/([א-ת])(\d)/g, "$1 $2").replace(/(\d)([א-ת])/g, "$1 $2")  // "קוטג5" -> "קוטג 5"
+      .replace(/(\d),(\d)/g, "$1.$2")
+      .replace(/(\d)\s*(?:%|אחוזים|אחוזי|אחוז)(?![א-ת])/g, "$1%")
+      .replace(/(?<!\d\s*)ליטר\s+וחצי/g, "1.5 ליטר").replace(/חצי\s+ליטר/g, "0.5 ליטר")
+      .replace(/(?<!\d\s*)(?:קילו|ק"?ג)\s+וחצי/g, '1.5 ק"ג').replace(/חצי\s+(?:קילו|ק"?ג)/g, '0.5 ק"ג');
+  }
+  const pct = (text) => { const m = prep(text).match(PCT_RE); return m ? parseFloat(m[1]) : null; };
+  let PCT = null;  // the percentage in each product name ("חלב 3% ..." -> 3), null when none
+
   // "האורז" -> "אורז", "ולחם" -> "לחם", "אורזז" -> "אורז"; null when nothing like it is sold anywhere
   function fixWord(w) {
     if (STOP.has(w)) return "";
@@ -299,46 +319,72 @@ SEARCH_JS = r'''<script>
       const r = w.slice(k);
       if (r.length >= 2 && (VOCAB.has(r) || (r.length >= 3 && known(r)))) return r;
     }
+    if (w.length >= 5 && !VOCAB.has(w)) for (let i = 2; i <= w.length - 2; i++) {  // written together: "קוקהקולה" -> "קוקה קולה"
+      const a = w.slice(0, i), b = w.slice(i);
+      if (VOCAB.has(a) && VOCAB.has(b) && WORDS.some((ws) => ws.includes(a) && ws.includes(b))) return a + " " + b;
+    }
     if (known(w)) return w;
     if (w.length >= 4) {
       for (let i = 0; i < w.length; i++) { const r = w.slice(0, i) + w.slice(i + 1); if (known(r)) return r; }   // one extra letter
       for (let i = 0; i < w.length - 1; i++) { const r = w.slice(0, i) + w[i + 1] + w[i] + w.slice(i + 2); if (known(r)) return r; } // swapped letters
     }
+    if (w.length >= 5) for (let i = 2; i <= w.length - 2; i++) {  // written together: "קוקהקולה" -> "קוקה קולה"
+      const a = w.slice(0, i), b = w.slice(i);
+      if (VOCAB.has(a) && VOCAB.has(b)) return a + " " + b;
+    }
     return null;
   }
 
   function parseLine(line) {
-    let t = line.trim(), qty = null, kg = /ק"?ג|קילו/.test(t);
-    let m = t.match(/^(\d+(?:\.\d+)?)\s+(.+)$/) || t.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(?:ק"?ג|קילו|יח'?|יחידות)?$/);
+    const src = prep(line), pc = pct(src);
+    let t = src.replace(/\d+(?:\.\d+)?%/g, " ").replace(/\s+/g, " ").trim(), qty = null, kg = /ק"?ג|קילו/.test(t);
+    let m = (!/^\d+(?:\.\d+)?\s*(?:ליטר|ל'|ל|מ"?ל|מל|גרם|גר|ג'|ג)(?![א-ת])/.test(t) && t.match(/^(\d+(?:\.\d+)?)\s+(.+)$/)) || t.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(?:ק"?ג|קילו|יח'?|יחידות)?$/);
     if (m) { const a = parseFloat(m[1]); if (!isNaN(a)) { qty = a; t = m[2]; } else { qty = parseFloat(m[2]); t = m[1]; } }
     t = t.replace(/ק"?ג|קילו|יחידות|יח'?/g, " ").trim();
-    const raw = N(t).split(" ").filter((w) => w.length > 1 && !/^\d+$/.test(w) && !UNITW.test(w));
+    let raw = N(t).split(" ").filter((w) => w.length > 1 && !/^\d+$/.test(w) && !UNITW.test(w) && !(pc !== null && w === "שומנ"));
+    // written apart, sold as one word: "קורן פלקס" -> "קורנפלקס"
+    let joined = null;
+    for (let i = 0; i < raw.length - 1; i++) {
+      const j = raw[i] + raw[i + 1];
+      if (!VOCAB.has(j)) continue;
+      if (!WORDS.some((ws) => ws.includes(raw[i]) && ws.includes(raw[i + 1]))) raw.splice(i, 2, j);
+      else joined = [...raw.slice(0, i), j, ...raw.slice(i + 2)];  // both readings exist: try this one if needed
+    }
     const fixed = raw.map(fixWord);
-    const q = fixed.filter((w) => w);  // "" = filler word, null = not understood
+    const q = fixed.filter((w) => w).flatMap((w) => w.split(" "));  // "" = filler word, null = not understood
     const bad = !q.length || fixed.filter((w) => w === null).length > q.length;
-    return { text: line.trim(), q: bad ? [] : q, qty, kg, bad, amt: amount(line) };
+    const alt = joined ? joined.map(fixWord).filter((w) => w) : null;
+    return { text: line.trim(), q: bad ? [] : q, qty, kg, bad, amt: amount(src), pct: pc, alt };
   }
   function solve(item, refOverride) {
     const p = PRODUCTS, s = DATA.s;
     const multi = /\d\s*[*xX×]\s*\d/;
     const otherOk = (pi) => (!OTHER.test(N(p[pi][1])) || item.q.some((q) => OTHER.test(q))) && (!multi.test(p[pi][1]) || multi.test(item.text));
     const where = new Map();
-    for (let pi = 0; pi < p.length; pi++) if (item.q.every((q) => WORDS[pi].some((w) => wordOk(q, w))) && otherOk(pi)) where.set(pi, []);
-    const known = REFS.get(item.q.join(" "));
+    const pctOk = (pi) => item.pct === null || item.pct === undefined || PCT[pi] === null || PCT[pi] === item.pct;  // "חלב 3%" is never 1% milk
+    for (let pi = 0; pi < p.length; pi++) if (item.q.every((q) => WORDS[pi].some((w) => wordOk(q, w))) && otherOk(pi) && pctOk(pi)) where.set(pi, []);
+    const known0 = REFS.get(item.q.join(" ") + "|" + (item.pct ?? ""));
+    const known = known0 !== undefined && pctOk(known0) ? known0 : undefined;
     if (known !== undefined && !where.has(known)) where.set(known, []);
     s.forEach((rows, si) => rows.forEach(([pi, price]) => { const w = where.get(pi); if (w) w.push([si, price]); }));
-    const pool = [...where.keys()].filter((pi) => where.get(pi).length);
-    if (!pool.length) return { cands: [], ref: null, picks: [] };
+    let pool = [...where.keys()].filter((pi) => where.get(pi).length);
+    // "חלב 1%": only products that say 1%; a name without a % is not assumed to be the right one
+    if (item.pct != null) pool = pool.filter((pi) => PCT[pi] === item.pct);
+    if (!pool.length) {
+      if (item.alt && item.alt.length) return solve({ ...item, q: item.alt, alt: null }, refOverride);
+      return { cands: [], ref: null, picks: [] };
+    }
     const first = item.q[0], maxCov = Math.max(...pool.map((pi) => where.get(pi).length));
     const score = (pi) => {
       const ws = WORDS[pi], cov = where.get(pi).length, prices = where.get(pi).map((x) => x[1]).sort((a, b) => a - b);
       const head = (ws[0] && wordOk(first, ws[0])) ? 1 : 0;
       const extra = ws.filter((w) => w.length > 1 && !/^\d/.test(w) && !UNITW.test(w) && !item.q.some((q) => wordOk(q, w))).length;
       const sameAmt = item.amt && amount(p[pi][1]) === item.amt ? 1 : 0;  // "מים 1.5 ליטר" -> the 1.5 litre bottle
-      return [head && p[pi][2] === 1 ? 2 : head, cov >= maxCov - 1 ? 1 : 0, sameAmt, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
+      const exact = item.q.every((q) => ws.includes(q)) ? 1 : 0;  // "קורנפלקס" before "קורנפלור"
+      return [head && p[pi][2] === 1 && !(item.amt && !item.kg) ? 2 : head, exact, cov >= maxCov - 1 ? 1 : 0, sameAmt, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
     };
     const ranked = pool.sort((a, b) => { const A = score(a), B = score(b); for (let k = 0; k < A.length; k++) if (B[k] !== A[k]) return B[k] - A[k]; return 0; });
-    if (known !== undefined && where.get(known).length) { ranked.splice(ranked.indexOf(known), 1); ranked.unshift(known); }
+    if (known !== undefined && ranked.includes(known)) { ranked.splice(ranked.indexOf(known), 1); ranked.unshift(known); }
     const ref = refOverride ?? ranked[0];
     const refSize = size(p[ref][1]), weighted = p[ref][2] === 1, refWords = new Set(WORDS[ref]);
     let units = item.qty ?? 1;
@@ -346,13 +392,17 @@ SEARCH_JS = r'''<script>
     // "ביצים L 12", "קולה 6": the number is the pack ("12 ביצי משק"), not 12 packs
     if (item.qty > 1 && !item.kg && !weighted && (WORDS[ref].includes(String(item.qty)) || (/ביצ/.test(item.text) && [6, 10, 12, 18, 20, 24, 30].includes(item.qty)))) units = 1;
     const refAmt = amount(p[ref][1]), rhead = WORDS[ref][0] || "";
+    // "קפה 200 גרם" and the product is 100 g: two packs ("חצי ליטר שמנת" with 250 ml: two)
+    if (!weighted && item.amt && refAmt && refAmt !== item.amt && item.amt / refAmt >= 0.2 && item.amt / refAmt <= 10)
+      units = +(units * Math.max(1, Math.round(item.amt / refAmt))).toFixed(2);
     // a substitute is the same kind of product (its first words match: not "פתיתים ... אורז" for rice) and a similar size
     const headOk = (pi) => { const w = WORDS[pi][0] || ""; return wordOk(first, w) || (rhead.length > 2 && w.slice(0, 4) === rhead.slice(0, 4)); };
     const sizeOk = (pi) => { if (!refAmt) return true; const a = amount(p[pi][1]); return !a || (a / refAmt >= 0.6 && a / refAmt <= 1.67); };
     const picks = s.map((rows) => {
       const exact = rows.find(([pi]) => pi === ref);
       if (exact) return { pi: ref, price: exact[1], sub: false };
-      const opts = rows.filter(([pi]) => where.has(pi) && (p[pi][2] === 1) === weighted && headOk(pi) && sizeOk(pi));
+      const opts = rows.filter(([pi]) => where.has(pi) && (p[pi][2] === 1) === weighted && headOk(pi) && sizeOk(pi)
+        && (item.pct == null || PCT[pi] === item.pct));
       if (!opts.length) return null;
       const best = opts.map(([pi, price]) => ({ pi, price, same: refSize && size(p[pi][1]) === refSize ? 1 : 0,
         overlap: WORDS[pi].filter((w) => refWords.has(w)).length })).sort((a, b) => b.same - a.same || b.overlap - a.overlap || a.price - b.price)[0];
@@ -389,7 +439,7 @@ SEARCH_JS = r'''<script>
       const lines = it.r.picks.map((x, si) => x ? { ...x, si } : null).filter(Boolean).sort((a, b) => a.total - b.total)
         .map((x, k) => `<div class="pline${k === 0 ? " cheap" : ""}"><span>${esc(S[x.si].name)} · ${esc(PRODUCTS[x.pi][1])}${x.sub ? " <i>תחליף</i>" : ""}</span><b>${money(x.total)}</b></div>`);
       const shown = lines.slice(0, 4).join(""), rest = lines.slice(4).join("");
-      return `<li class=prod><div class=pname>${esc(it.text)}${it.r.weighted ? ` <small class=muted>(${it.r.units} ק"ג)</small>` : ""}</div>
+      return `<li class=prod><div class=pname>${esc(it.text)}${it.r.weighted ? ` <small class=muted>(${it.r.units} ק"ג)</small>` : it.r.units !== 1 ? ` <small class=muted>(${it.r.units} יח')</small>` : ""}</div>
         <label class=refsel>מוצר להשוואה: <select data-i="${ii}">${opts}</select></label>${shown}
         ${rest ? `<details class=all><summary>עוד ${lines.length - 4} חנויות</summary>${rest}</details>` : ""}</li>`;
     }).join("");
@@ -431,13 +481,17 @@ SEARCH_JS = r'''<script>
     const p = place();
     if (!p) { $("out").innerHTML = `<div class=notice>בחרו יישוב מהרשימה.</div>`; $("city").focus(); return; }
     if ($("street").value.trim() && !STREETS.some((x) => L(x) === L($("street").value))) { $("out").innerHTML = `<div class=notice>בחרו רחוב מהרשימה (או השאירו ריק).</div>`; return; }
-    const lines = $("q").value.split(/\n|,/).map((l) => l.trim()).filter(Boolean);
+    const lines = $("q").value.split(/\n|,(?!\d)|(?<!\d),/).map((l) => l.trim()).filter(Boolean);
     if (!lines.length) { $("out").innerHTML = `<div class=notice>כתבו לפחות מוצר אחד.</div>`; return; }
     const home = await homePoint(p), radius = +$("rad").value;
     if (!PRODUCTS) {
       PRODUCTS = await get("data/products.json");
-      WORDS = PRODUCTS.map((x) => N(x[1]).split(" "));
-      Object.entries(await get("data/refs.json")).forEach(([k, v]) => REFS.set(N(k).split(" ").filter((w) => w.length > 1).join(" "), v));
+      WORDS = PRODUCTS.map((x) => N(prep(x[1]).replace(/\d+(?:\.\d+)?%/g, " ")).split(" "));
+      PCT = PRODUCTS.map((x) => pct(x[1]));
+      Object.entries(await get("data/refs.json")).forEach(([k, v]) => {
+        const pk = pct(k), words = N(prep(k).replace(/\d+(?:\.\d+)?%/g, " ")).split(" ").filter((w) => w.length > 1 && !/^\d+$/.test(w) && !UNITW.test(w));
+        REFS.set(words.join(" ") + "|" + (pk ?? ""), v);
+      });
     }
     let chosen = STORES.map((st, i) => ({ ...st, i, km: st.kind === "delivery" ? 0 : km(home.xy, [st.la, st.lo]) }))
       .filter((st) => !/ליקוט|\bBE\d*\b/i.test(st.name))  // picking centres, beauty branches: not shops
