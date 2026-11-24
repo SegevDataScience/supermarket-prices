@@ -79,8 +79,8 @@ def km(v):
 
 SEARCH_JS = r'''<script>
 (() => {
-  // Free search over the price data of the stores near home (prices.json, refreshed with the page).
-  // Runs entirely in the browser: no server, no AI. Same ranking rule as the app.
+  // Free search: pick a locality + street (closed lists), a radius and a shopping list. Runs in the
+  // browser on the price files in data/ (refreshed from the home PC). No server, no AI.
   const $ = (id) => document.getElementById(id);
   const money = (v) => "₪" + v.toLocaleString("he-IL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -89,21 +89,46 @@ SEARCH_JS = r'''<script>
   const OTHER = /חתול|כלב|לחיות|פנסי ?פיסט|פריסקיז|ויסקס|פדיגרי|בטעמ|ממרח|צ ?יפס|פופקו|פריכ|ספרינג|משקה|מגבונ|לילד|לתינוק|תינוק|במלח|בחומצ|כבוש|חמוצ|שימור|קפוא|מיובש|מוחמצ|במילוי|ממולא|רביעי|שישי|שלישי|מארז|זוג(?![א-ת])/;
   const UNITW = /^(גרמ|גר|ג|ליטר|ל|מל|מ"ל|יח|יחידות|קג|קילו|גרמים)$/;
   const SIZE = /(\d+(?:\.\d+)?)\s*(ק"?ג|קג|קילו|גרמ|גר|ג|ליטר|ל|מ"?ל|מל|יח)(?![א-ת])/;
-  let DATA = null, words = null, REFS = new Map();
+  const km = (a, b) => { const r = Math.PI / 180, dl = (b[0] - a[0]) * r, dn = (b[1] - a[1]) * r;
+    const h = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dn / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
+  const get = async (u) => { const r = await fetch(u, { cache: "no-cache" }); if (!r.ok) throw new Error(u + " " + r.status); return r.json(); };
 
-  async function load() {
-    if (DATA) return DATA;
-    const res = await fetch("prices.json", { cache: "no-cache" });
-    DATA = await res.json();
-    words = DATA.p.map((p) => N(p[1]).split(" "));
-    Object.entries(DATA.refs || {}).forEach(([k, v]) => REFS.set(N(k).split(" ").filter((w) => w.length > 1).join(" "), v));
-    return DATA;
+  let PLACES = [], STORES = null, PRODUCTS = null, WORDS = null, REFS = new Map(), STREETS = [];
+  const fileCache = new Map();
+  let DATA = null;
+
+  // ---------- address ----------
+  async function init() {
+    try {
+      PLACES = await get("data/places.json");
+      $("cities").innerHTML = PLACES.map((p) => `<option value="${esc(p.n)}">`).join("");
+      const meta = await get("data/stores.json");
+      STORES = meta.stores;
+      $("datapill").textContent = `${PLACES.length} יישובים · ${STORES.filter((s) => s.kind !== "delivery").length} סניפים · מחירים מ-${meta.date.split("-").reverse().join(".")}`;
+    } catch (e) { $("datapill").textContent = "לא נטענו נתוני המחירים"; }
   }
-  // short words match exactly or with a plural ending ("חלב" is not "חלבה"); longer words by their first 4 letters
-  const wordOk = (q, w) => (q.length <= 3 ? w === q || w === q + "ימ" || w === q + "ות" : w.startsWith(q.slice(0, Math.min(q.length, 4))));
-  const matches = (qw, pi) => qw.every((q) => words[pi].some((w) => wordOk(q, w)));
-  const size = (name) => { const m = N(name).match(SIZE); return m ? m[1] + m[2][0] : null; };
+  const place = () => PLACES.find((p) => p.n === $("city").value.trim());
+  $("city").addEventListener("change", async () => {
+    const p = place();
+    $("street").value = ""; $("streets").innerHTML = ""; STREETS = [];
+    $("street").disabled = !p; $("street").placeholder = p ? "רחוב (לא חובה)" : "בחרו יישוב קודם";
+    if (!p) return;
+    try { STREETS = await get(`data/streets/${p.c}.json`); $("streets").innerHTML = STREETS.map((s) => `<option value="${esc(s)}">`).join(""); } catch {}
+  });
+  async function homePoint(p) {
+    const st = $("street").value.trim(), num = $("num").value.trim();
+    if (!st) return { xy: [p.la, p.lo], label: p.n };
+    try {
+      const q = `${st}${num ? " " + num : ""}, ${p.n}`;
+      const r = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q=${encodeURIComponent(q)}`)).json();
+      if (r && r[0]) { const xy = [+r[0].lat, +r[0].lon]; if (km(xy, [p.la, p.lo]) < 12) return { xy, label: q }; }
+    } catch {}
+    return { xy: [p.la, p.lo], label: `${p.n} (מרכז היישוב - הרחוב לא אותר במפה)` };
+  }
 
+  // ---------- matching (same rules as before) ----------
+  const wordOk = (q, w) => (q.length <= 3 ? w === q || w === q + "ימ" || w === q + "ות" : w.startsWith(q.slice(0, Math.min(q.length, 4))));
+  const size = (name) => { const m = N(name).match(SIZE); return m ? m[1] + m[2][0] : null; };
   function parseLine(line) {
     let t = line.trim(), qty = null, kg = /ק"?ג|קילו/.test(t);
     let m = t.match(/^(\d+(?:\.\d+)?)\s+(.+)$/) || t.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(?:ק"?ג|קילו|יח'?|יחידות)?$/);
@@ -111,64 +136,47 @@ SEARCH_JS = r'''<script>
     t = t.replace(/ק"?ג|קילו|יחידות|יח'?/g, " ").trim();
     return { text: line.trim(), q: N(t).split(" ").filter((w) => w.length > 1), qty, kg };
   }
-
   function solve(item, refOverride) {
-    const { p, s } = DATA;
-    const cand = [];
-    for (let pi = 0; pi < p.length; pi++) if (matches(item.q, pi)) cand.push(pi);
+    const p = PRODUCTS, s = DATA.s;
     const multi = /\d\s*[*xX×]\s*\d/;
     const otherOk = (pi) => (!OTHER.test(N(p[pi][1])) || item.q.some((q) => OTHER.test(q))) && (!multi.test(p[pi][1]) || multi.test(item.text));
-    const pool = cand.filter(otherOk);
-    if (!pool.length) return { cands: [], ref: null, picks: [] };
-    const where = new Map(); // product -> [[store, price]]
-    pool.forEach((pi) => where.set(pi, []));
+    const where = new Map();
+    for (let pi = 0; pi < p.length; pi++) if (item.q.every((q) => WORDS[pi].some((w) => wordOk(q, w))) && otherOk(pi)) where.set(pi, []);
+    const known = REFS.get(item.q.join(" "));
+    if (known !== undefined && !where.has(known)) where.set(known, []);
     s.forEach((rows, si) => rows.forEach(([pi, price]) => { const w = where.get(pi); if (w) w.push([si, price]); }));
-    const first = item.q[0];
+    const pool = [...where.keys()].filter((pi) => where.get(pi).length);
+    if (!pool.length) return { cands: [], ref: null, picks: [] };
+    const first = item.q[0], maxCov = Math.max(...pool.map((pi) => where.get(pi).length));
     const score = (pi) => {
-      const ws = words[pi], cov = where.get(pi).length;
-      const prices = where.get(pi).map((x) => x[1]).sort((a, b) => a - b);
+      const ws = WORDS[pi], cov = where.get(pi).length, prices = where.get(pi).map((x) => x[1]).sort((a, b) => a - b);
       const head = (ws[0] && wordOk(first, ws[0])) ? 1 : 0;
       const extra = ws.filter((w) => w.length > 1 && !/^\d/.test(w) && !UNITW.test(w) && !item.q.some((q) => wordOk(q, w))).length;
-      // fresh produce by weight ("מלפפון" per kg) beats a jar sold everywhere; then the product sold in the
-      // most stores (a fair comparison), the plainest name (fewest extra words), the typical (median) price
       return [head && p[pi][2] === 1 ? 2 : head, cov >= maxCov - 1 ? 1 : 0, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
     };
-    const maxCov = Math.max(...pool.map((pi) => where.get(pi).length));
-    const ranked = pool.filter((pi) => where.get(pi).length).sort((a, b) => {
-      const A = score(a), B = score(b);
-      for (let k = 0; k < A.length; k++) if (B[k] !== A[k]) return B[k] - A[k];
-      return 0;
-    });
-    const known = REFS.get(item.q.join(" "));
-    const ref = refOverride ?? (known !== undefined && where.has(known) ? known : (known !== undefined ? (where.set(known, []), s.forEach((rows, si) => rows.forEach(([pi, price]) => { if (pi === known) where.get(known).push([si, price]); })), known) : ranked[0]));
-    if (known !== undefined && !ranked.includes(known)) ranked.unshift(known);
-    const refSize = size(p[ref][1]), weighted = p[ref][2] === 1;
-    const refWords = new Set(words[ref]);
+    const ranked = pool.sort((a, b) => { const A = score(a), B = score(b); for (let k = 0; k < A.length; k++) if (B[k] !== A[k]) return B[k] - A[k]; return 0; });
+    if (known !== undefined && where.get(known).length) { ranked.splice(ranked.indexOf(known), 1); ranked.unshift(known); }
+    const ref = refOverride ?? ranked[0];
+    const refSize = size(p[ref][1]), weighted = p[ref][2] === 1, refWords = new Set(WORDS[ref]);
     let units = item.qty ?? 1;
-    if (weighted && item.qty && !item.kg) units = +(item.qty * 0.15).toFixed(2); // a count of produce ≈ 150 g each
-    const picks = s.map((rows, si) => {
+    if (weighted && item.qty && !item.kg) units = +(item.qty * 0.15).toFixed(2);
+    const picks = s.map((rows) => {
       const exact = rows.find(([pi]) => pi === ref);
-      if (exact) return { si, pi: ref, price: exact[1], sub: false };
-      const opts = rows.filter(([pi]) => where.has(pi) && otherOk(pi) && (p[pi][2] === 1) === weighted);
+      if (exact) return { pi: ref, price: exact[1], sub: false };
+      const opts = rows.filter(([pi]) => where.has(pi) && (p[pi][2] === 1) === weighted);
       if (!opts.length) return null;
       const best = opts.map(([pi, price]) => ({ pi, price, same: refSize && size(p[pi][1]) === refSize ? 1 : 0,
-        overlap: words[pi].filter((w) => refWords.has(w)).length }))
-        .sort((a, b) => b.same - a.same || b.overlap - a.overlap || a.price - b.price)[0];
-      // produce has a different internal code in every chain: the same first word ("מלפפון") is the same produce
-      const refHead = words[ref][0] || "", head = words[best.pi][0] || "";
-      const sameProduce = weighted && refHead && head.slice(0, 4) === refHead.slice(0, 4) && words[best.pi].length <= words[ref].length + 1;
-      return { si, pi: best.pi, price: best.price, sub: !sameProduce };
+        overlap: WORDS[pi].filter((w) => refWords.has(w)).length })).sort((a, b) => b.same - a.same || b.overlap - a.overlap || a.price - b.price)[0];
+      const rh = WORDS[ref][0] || "", h = WORDS[best.pi][0] || "";
+      const sameProduce = weighted && rh && h.slice(0, 4) === rh.slice(0, 4) && WORDS[best.pi].length <= WORDS[ref].length + 1;
+      return { pi: best.pi, price: best.price, sub: !sameProduce };
     });
-    const exactLines = picks.filter((x) => x && !x.sub).map((x) => x.price).sort((a, b) => a - b);
-    const med = exactLines[Math.floor(exactLines.length / 2)];
+    const ex = picks.filter((x) => x && !x.sub).map((x) => x.price).sort((a, b) => a - b), med = ex[Math.floor(ex.length / 2)];
     picks.forEach((x, i) => { if (x) { x.total = +(x.price * units).toFixed(2); if (x.sub && med && x.price > 2 * med) picks[i] = null; } });
     return { cands: ranked.slice(0, 8), ref, picks, units, weighted };
   }
 
-  function run(refs = {}) {
-    const lines = $("q").value.split(/\n|,/).map((l) => l.trim()).filter(Boolean);
-    if (!lines.length) { $("out").innerHTML = ""; return; }
-    const items = lines.map(parseLine).map((it, i) => ({ ...it, r: solve(it, refs[i]) }));
+  function render(items, home) {
     const S = DATA.stores;
     const agg = S.map((st, si) => {
       let total = 0, found = 0, subs = 0;
@@ -176,42 +184,64 @@ SEARCH_JS = r'''<script>
       return { si, st, total: +total.toFixed(2), found, subs };
     }).filter((a) => a.found);
     agg.sort((a, b) => (a.st.kind === "convenience") - (b.st.kind === "convenience") || b.found - a.found || a.total - b.total);
-    if (!agg.length) { $("out").innerHTML = `<div class=notice>לא נמצאו מוצרים כאלה בחנויות שליד הבית. נסו מילים אחרות.</div>`; return; }
+    if (!agg.length) { $("out").innerHTML = `<div class=notice>לא נמצאו מוצרים כאלה בחנויות ברדיוס שנבחר. נסו רדיוס גדול יותר או מילים אחרות.</div>`; return; }
     const w = agg[0], next = agg.find((a) => a !== w && a.found === w.found && a.st.kind !== "convenience");
     const medal = ["🥇", "🥈", "🥉"];
-    const where = (st) => st.kind === "delivery" ? "🚚 משלוח עד הבית" : `📍 ${st.approx ? "≈ " : ""}${st.km.toFixed(1)} ק"מ`;
+    const where = (st) => st.kind === "delivery" ? "🚚 משלוח עד הבית (יש לוודא שמגיעים לכתובת)" : `📍 ${st.approx ? "≈ " : ""}${st.km.toFixed(1)} ק"מ · ${esc(st.addr)}`;
+    const old = [...new Set(S.map((st) => st.date))].sort();
     const rows = agg.filter((a) => a.st.kind !== "convenience").map((a, i) => `<li class="row${a === w ? " best" : ""}"><span class=rank>${medal[i] || i + 1}</span>
       <span class=who><b>${esc(a.st.name)}</b><small>${where(a.st)}</small></span>
       <span class=price><b>${money(a.total)}</b><small class="${a.found === items.length ? "ok" : "partial"}">${a.found}/${items.length} מוצרים${a.subs ? ` · ${a.subs} תחליפים` : ""}</small></span></li>`).join("");
     const prods = items.map((it, ii) => {
-      if (!it.r.ref && it.r.ref !== 0) return `<li class=prod><div class=pname>${esc(it.text)}</div><div class=pcheap>לא נמצא בחנויות שליד הבית</div></li>`;
-      const opts = it.r.cands.map((pi) => `<option value="${pi}"${pi === it.r.ref ? " selected" : ""}>${esc(DATA.p[pi][1])}</option>`).join("");
+      if (it.r.ref === null || it.r.ref === undefined) return `<li class=prod><div class=pname>${esc(it.text)}</div><div class=pcheap>לא נמצא בחנויות ברדיוס</div></li>`;
+      const opts = it.r.cands.map((pi) => `<option value="${pi}"${pi === it.r.ref ? " selected" : ""}>${esc(PRODUCTS[pi][1])}</option>`).join("");
       const lines = it.r.picks.map((x, si) => x ? { ...x, si } : null).filter(Boolean).sort((a, b) => a.total - b.total)
-        .map((x, k) => `<div class="pline${k === 0 ? " cheap" : ""}"><span>${esc(S[x.si].name)} · ${esc(DATA.p[x.pi][1])}${x.sub ? " <i>תחליף</i>" : ""}</span><b>${money(x.total)}</b></div>`).join("");
+        .map((x, k) => `<div class="pline${k === 0 ? " cheap" : ""}"><span>${esc(S[x.si].name)} · ${esc(PRODUCTS[x.pi][1])}${x.sub ? " <i>תחליף</i>" : ""}</span><b>${money(x.total)}</b></div>`).join("");
       return `<li class=prod><div class=pname>${esc(it.text)}${it.r.weighted ? ` <small class=muted>(${it.r.units} ק"ג)</small>` : ""}</div>
         <label class=refsel>מוצר להשוואה: <select data-i="${ii}">${opts}</select></label>${lines}</li>`;
     }).join("");
     $("out").innerHTML = `
+      <p class=muted style="font-size:.85rem;margin:10px 0 0">📍 ${esc(home.label)} · ${S.filter((x) => x.kind !== "delivery").length} סניפים ברדיוס · מחירים מ-${esc(old.map((d) => d.split("-").reverse().slice(0, 2).join(".")).join(", "))}</p>
       <div class=hero><div class=hero-tag>🏆 הסל הכי זול</div><div class=hero-store>${esc(w.st.name)}</div>
-        <div class=hero-where>${w.st.kind === "delivery" ? "משלוח עד הבית · לפני דמי משלוח" : where(w.st)}</div>
-        <div class=hero-total>${money(w.total)}</div>
+        <div class=hero-where>${where(w.st)}</div><div class=hero-total>${money(w.total)}</div>
         <div class=chips><span class=chip>✔ ${w.found} מתוך ${items.length} מוצרים</span>${w.subs ? `<span class=chip>↺ ${w.subs} תחליפים</span>` : ""}
         ${next && next.total - w.total > 0.005 ? `<span class="chip good">חוסך ${money(next.total - w.total)} לעומת ${esc(next.st.name)}</span>` : ""}</div></div>
       <h3>דירוג החנויות</h3><ol class=ranking>${rows}</ol>
       <details class=more open><summary>פירוט לפי מוצר (אפשר להחליף את המוצר להשוואה)</summary><ul class=products>${prods}</ul></details>
-      <p class=muted style="font-size:.8rem">ההתאמה לפי שם המוצר והברקוד, בלי בינה מלאכותית; מוצר מסומן "תחליף" כשהחנות לא מוכרת את אותו מוצר. כמות של ירקות בלי ק"ג מחושבת כ-150 גרם ליחידה.</p>`;
+      <p class=muted style="font-size:.8rem">ההתאמה לפי שם המוצר והברקוד (מוצרים שחופשו באפליקציה - בדיוק כמו באפליקציה); "תחליף" = החנות לא מוכרת את אותו מוצר. ירקות בלי ק"ג נספרים כ-150 גרם ליחידה. מרחקים בקו אוויר.</p>`;
     $("out").querySelectorAll("select[data-i]").forEach((sel) => sel.addEventListener("change", () => {
       const cur = {}; $("out").querySelectorAll("select[data-i]").forEach((x) => { cur[+x.dataset.i] = +x.value; });
-      run(cur);
+      render(items.map((it, i) => ({ ...it, r: solve(it, cur[i]) })), home);
     }));
+  }
+
+  async function search() {
+    const p = place();
+    if (!p) { $("out").innerHTML = `<div class=notice>בחרו יישוב מהרשימה.</div>`; $("city").focus(); return; }
+    if ($("street").value.trim() && !STREETS.includes($("street").value.trim())) { $("out").innerHTML = `<div class=notice>בחרו רחוב מהרשימה (או השאירו ריק).</div>`; return; }
+    const lines = $("q").value.split(/\n|,/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) { $("out").innerHTML = `<div class=notice>כתבו לפחות מוצר אחד.</div>`; return; }
+    const home = await homePoint(p), radius = +$("rad").value;
+    if (!PRODUCTS) {
+      PRODUCTS = await get("data/products.json");
+      WORDS = PRODUCTS.map((x) => N(x[1]).split(" "));
+      Object.entries(await get("data/refs.json")).forEach(([k, v]) => REFS.set(N(k).split(" ").filter((w) => w.length > 1).join(" "), v));
+    }
+    const chosen = STORES.map((st, i) => ({ ...st, i, km: st.kind === "delivery" ? 0 : km(home.xy, [st.la, st.lo]) }))
+      .filter((st) => st.kind === "delivery" || st.km <= radius + (st.approx ? -1 : 0))
+      .sort((a, b) => (a.kind === "delivery") - (b.kind === "delivery") || a.km - b.km).slice(0, 32);
+    const rows = await Promise.all(chosen.map(async (st) => { if (!fileCache.has(st.i)) fileCache.set(st.i, await get(`data/s/${st.i}.json`)); return fileCache.get(st.i); }));
+    DATA = { stores: chosen, s: rows };
+    render(lines.map(parseLine).map((it) => ({ ...it, r: solve(it) })), home);
   }
 
   $("go").addEventListener("click", async () => {
     $("go").disabled = true; $("go").textContent = "מחפש…";
-    try { await load(); run(); } catch (e) { $("out").innerHTML = `<div class=notice>לא הצלחתי לטעון את המחירים (${esc(e.message)})</div>`; }
+    try { await search(); } catch (e) { $("out").innerHTML = `<div class=notice>שגיאה: ${esc(e.message)}</div>`; }
     $("go").disabled = false; $("go").textContent = "השווה מחירים";
   });
   $("clear").addEventListener("click", () => { $("q").value = ""; $("out").innerHTML = ""; $("q").focus(); });
+  init();
 })();
 </script>
 '''
@@ -344,6 +374,9 @@ button.btn{{font:inherit;cursor:pointer}} button.btn:disabled{{opacity:.6}}
 textarea{{width:100%;font:inherit;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;resize:vertical}}
 textarea:focus{{outline:2px solid var(--accent);outline-offset:1px}}
 .section-title{{font-size:1.1rem;margin:26px 4px 0}}
+.addr{{display:grid;grid-template-columns:2fr 2fr 1fr 1fr;gap:8px;margin-top:10px}} .addr label{{font-size:.8rem;color:var(--muted);display:grid;gap:4px}}
+.addr input,.addr select{{font:inherit;font-size:.95rem;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%}}
+.addr input:disabled{{opacity:.55}} @media (max-width:560px){{.addr{{grid-template-columns:1fr 1fr}}}}
 .refsel{{display:block;font-size:.8rem;color:var(--muted);margin:4px 0}} .refsel select{{max-width:100%;font:inherit;font-size:.82rem;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:2px 6px}}
 .pline.cheap b{{color:var(--good)}} #out{{margin-top:6px}}
 footer{{color:var(--muted);font-size:.8rem;margin:22px 4px;text-align:center}}
@@ -352,8 +385,15 @@ footer{{color:var(--muted);font-size:.8rem;margin:22px 4px;text-align:center}}
 <p>עודכן {e(stamp)} · מחירי מדף מהקבצים הרשמיים של הרשתות, בלי מבצעים ומחירי מועדון</p></header>
 {f'<div class=notice>⚠ {e(notice)}</div>' if notice else ""}
 <section class=list id=search>
-  <div class=list-head><h2>🔎 חיפוש חופשי</h2><span class=pill>{len(stores_all)} חנויות ליד הבית</span></div>
-  <p class=muted style="margin:6px 0 10px;font-size:.88rem">כתבו מוצר אחד או רשימה (מוצר בכל שורה, אפשר עם כמות: "10 מלפפונים", "חלב 2").</p>
+  <div class=list-head><h2>🔎 חיפוש חופשי</h2><span class=pill id=datapill>טוען נתונים…</span></div>
+  <div class=addr>
+    <label>עיר / יישוב<input id=city list=cities autocomplete=off placeholder="התחילו להקליד ובחרו"></label>
+    <label>רחוב<input id=street list=streets autocomplete=off disabled placeholder="בחרו יישוב קודם"></label>
+    <label>מספר<input id=num inputmode=numeric maxlength=5 placeholder="לא חובה"></label>
+    <label>רדיוס<select id=rad><option value=2>2 ק"מ</option><option value=3>3 ק"מ</option><option value=4 selected>4 ק"מ</option><option value=6>6 ק"מ</option><option value=8>8 ק"מ</option><option value=12>12 ק"מ</option></select></label>
+  </div>
+  <datalist id=cities></datalist><datalist id=streets></datalist>
+  <p class=muted style="margin:10px 0 6px;font-size:.88rem">מה קונים? מוצר בכל שורה, אפשר עם כמות ("10 מלפפונים", "חלב 2").</p>
   <textarea id=q rows=5 placeholder="למשל:&#10;חלב 3%&#10;10 מלפפונים&#10;במבה&#10;קפה טורקי"></textarea>
   <div class=downloads><button id=go class="btn primary" type=button>השווה מחירים</button><button id=clear class=btn type=button>נקה</button></div>
   <div id=out></div>
@@ -447,7 +487,6 @@ def main():
         if last.get("stamp"):
             notice += f" העדכון המלא האחרון: {last['stamp']}."
     (SITE / "index.html").write_text(render(jobs, titles, stamp, notice), encoding="utf-8")
-    (SITE / "prices.json").write_text(json.dumps(build_prices(jobs), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     # Run diagnostics (no address): which chains failed and why, readable at <page>/status.txt
     lines = [f"run {stamp}"]
     for job, title in zip(jobs, titles):
@@ -467,21 +506,9 @@ def main():
     for a in addr:
         text = text.replace(a, "<address>")
     (SITE / "status.txt").write_text(text, encoding="utf-8")
-    if "--publish" in sys.argv:  # the PC run: a full page that the GitHub workflow publishes as is
-        pub = ROOT / "published"
-        pub.mkdir(exist_ok=True)
-        for f in pub.iterdir():
-            f.unlink()
-        for f in SITE.iterdir():
-            (pub / f.name).write_bytes(f.read_bytes())
-        (pub / "stamp.json").write_text(json.dumps({"date": datetime.now().strftime("%Y-%m-%d"), "stamp": stamp,
-                                                    "source": "pc"}, ensure_ascii=False), encoding="utf-8")
-        # the PC's product decisions travel with it (new items searched on the PC)
-        DATA.mkdir(parents=True, exist_ok=True)
-        for name in ("queries_cache.json", "ref_products.json"):
-            src = app.WORK_DIR / name
-            if src.exists():
-                (DATA / name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    if "--publish" in sys.argv:  # the PC run: stamp for the page (pushed to the "pages" branch by the .bat)
+        (SITE / "stamp.json").write_text(json.dumps({"date": datetime.now().strftime("%Y-%m-%d"), "stamp": stamp,
+                                                     "source": "pc"}, ensure_ascii=False), encoding="utf-8")
     print(f"page: {SITE / 'index.html'}")
 
 

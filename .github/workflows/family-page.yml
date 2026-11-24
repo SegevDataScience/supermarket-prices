@@ -1,23 +1,14 @@
 # Family page (GitHub Pages).
-# Normally the home PC builds the FULL page every 3 days (all chains answer from Israel) and pushes it
-# to published/; this workflow then publishes it as is. If the PC's page is 3+ days old, it
-# builds a PARTIAL page here (several chains' price sites don't answer servers outside Israel) with a
-# clear notice. The lists and the home address come from the secret FAMILY_CONFIG; the page shows no address.
+# The home PC builds the whole site every 3 days (price data for the chosen areas + the saved lists;
+# all chains answer from Israel) and force-pushes it to the "pages" branch, then touches
+# family/last_publish.txt on main; this workflow (running from main) publishes the "pages" branch as is. Prices on the page always show their date.
 name: Family page
 
 on:
-  schedule:
-    - cron: "0 7 * * *"    # 07:00 UTC = 09:00 Israel (winter) / 10:00 (summer): fallback if the PC didn't publish
-  workflow_dispatch: {}    # "Run workflow" button
-  push:                    # the PC's daily page, product decisions or page code
+  push:                      # the PC updates family/last_publish.txt on main right after pushing "pages"
     branches: [main]
-    paths:
-      - "published/**"
-      - "family/**"
-      - "app.py"
-      - "fresh_prices.py"
-      - "ext/**"
-      - ".github/workflows/family-page.yml"
+    paths: ["family/last_publish.txt", ".github/workflows/family-page.yml"]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -29,63 +20,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    env:
-      TZ: Asia/Jerusalem
-      PYTHONIOENCODING: utf-8
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Use the PC's full page if it is less than 3 days old
-        id: pc
-        run: |
-          if [ -f published/stamp.json ] && python3 -c "import json,datetime,sys; d=json.load(open('published/stamp.json')); age=(datetime.date.today()-datetime.date.fromisoformat(d.get('date','2000-01-01'))).days; sys.exit(0 if age < 3 else 1)"; then
-            mkdir -p site && cp -r published/. site/ && rm -f site/stamp.json
-            echo "fresh=1" >> "$GITHUB_OUTPUT"
-            echo "Publishing the full page built on the PC (less than 3 days old)."
-          else
-            echo "fresh=0" >> "$GITHUB_OUTPUT"
-            echo "The PC's page is 3+ days old: building a partial page here."
-          fi
-
-      - if: steps.pc.outputs.fresh != '1'
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - if: steps.pc.outputs.fresh != '1'
-        name: Install requirements
-        run: pip install requests
-
-      - if: steps.pc.outputs.fresh != '1'
-        name: Restore geocoding cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/il-supermarkets/geocode.json
-            ~/.cache/il-supermarkets/cities-*.json
-            .il-supermarket-work/geocode_ui.json
-          key: geo-${{ github.run_id }}
-          restore-keys: geo-
-
-      - if: steps.pc.outputs.fresh != '1'
-        name: Build a partial page (cloud)
-        env:
-          FAMILY_CONFIG: ${{ secrets.FAMILY_CONFIG }}
-        run: python family/daily_page.py
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: pages
+      - name: Remove repository files from the site
+        run: rm -rf .git .github
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
       - id: deployment
         uses: actions/deploy-pages@v4

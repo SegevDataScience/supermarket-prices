@@ -1,14 +1,15 @@
+
 # Personal data: never published
+# Python / editors
+*.log
+*.pyc
+.idea/
+.il-supermarket-work/
+.vscode/
+__pycache__/
 family/config.json
 history.json
 lists.json
-.il-supermarket-work/
+published/
 qa/
 site/
-
-# Python / editors
-__pycache__/
-*.pyc
-.vscode/
-.idea/
-*.log

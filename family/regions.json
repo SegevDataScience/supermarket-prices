@@ -1,0 +1,80 @@
+{
+ "note": "Areas covered by the family page's free search. center = official locality name (data.gov.il); radius in km. Localities and branches within the radius are included.",
+ "regions": [
+  {
+   "name": "ירושלים",
+   "center": "ירושלים",
+   "radius": 10
+  },
+  {
+   "name": "אזור שואבה, מבשרת וקרית יערים",
+   "center": "מבשרת ציון",
+   "radius": 8
+  },
+  {
+   "name": "בית שמש",
+   "center": "בית שמש",
+   "radius": 6
+  },
+  {
+   "name": "עמק האלה",
+   "center": "גבעת ישעיהו",
+   "radius": 10
+  },
+  {
+   "name": "מודיעין",
+   "center": "מודיעין-מכבים-רעות",
+   "radius": 6
+  },
+  {
+   "name": "תל אביב",
+   "center": "תל אביב - יפו",
+   "radius": 6
+  },
+  {
+   "name": "רמת גן",
+   "center": "רמת גן",
+   "radius": 4
+  },
+  {
+   "name": "פתח תקווה",
+   "center": "פתח תקווה",
+   "radius": 6
+  },
+  {
+   "name": "כפר סבא",
+   "center": "כפר סבא",
+   "radius": 5
+  },
+  {
+   "name": "ראשון לציון",
+   "center": "ראשון לציון",
+   "radius": 6
+  },
+  {
+   "name": "חולון ובת ים",
+   "center": "חולון",
+   "radius": 5
+  },
+  {
+   "name": "קרית גת",
+   "center": "קרית גת",
+   "radius": 6
+  },
+  {
+   "name": "רחובות",
+   "center": "רחובות",
+   "radius": 5
+  },
+  {
+   "name": "אשדוד",
+   "center": "אשדוד",
+   "radius": 6
+  },
+  {
+   "name": "נתניה",
+   "center": "נתניה",
+   "radius": 6
+  }
+ ]
+}
