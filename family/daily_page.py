@@ -189,6 +189,8 @@ SEARCH_JS = r'''<script>
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const N = (s) => String(s || "").toLowerCase().replace(/["'״׳`.,()\-*\/+%!?:;]/g, " ")
     .replace(/ך/g, "כ").replace(/ם/g, "מ").replace(/ן/g, "נ").replace(/ף/g, "פ").replace(/ץ/g, "צ").replace(/\s+/g, " ").trim();
+  // special versions: chosen only when asked for ("קולה" is the regular one, "קולה זירו" the zero)
+  const VARIANT = /מוגז|סודה|זירו|zero|דיאט|diet|לייט|light|ללא סוכר|ללא תוספת סוכר|נטול|מופחת|max|מקס(?![א-ת])/i;
   const OTHER = /אדמה|קינדר|הפתעה|שוקולד|בונבון|בון בון|חתול|כלב|לחיות|פנסי ?פיסט|פריסקיז|ויסקס|פדיגרי|בטעמ|ממרח|צ ?יפס|פופקו|פריכ|ספרינג|משקה|מגבונ|לילד|לתינוק|תינוק|במלח|בחומצ|כבוש|חמוצ|שימור|קפוא|מיובש|מוחמצ|במילוי|ממולא|רביעי|שישי|שלישי|מארז|זוג(?![א-ת])/;
   const UNITW = /^(גרמ|גר|ג|ליטר|ל|מל|מ"ל|יח|יחידות|קג|קילו|גרמים)$/;
   const SIZE = /(\d+(?:\.\d+)?)\s*(ק"?ג|קג|קילו|גרמ|גר|ג|ליטר|ל|מ"?ל|מל|יח)(?![א-ת])/;
@@ -361,6 +363,7 @@ SEARCH_JS = r'''<script>
     const multi = /\d\s*[*xX×]\s*\d/;
     const otherOk = (pi) => (!OTHER.test(N(p[pi][1])) || item.q.some((q) => OTHER.test(q))) && (!multi.test(p[pi][1]) || multi.test(item.text));
     const where = new Map();
+    const wantV = VARIANT.test(item.text), varOk = (pi) => VARIANT.test(p[pi][1]) === wantV;
     const pctOk = (pi) => item.pct === null || item.pct === undefined || PCT[pi] === null || PCT[pi] === item.pct;  // "חלב 3%" is never 1% milk
     for (let pi = 0; pi < p.length; pi++) if (item.q.every((q) => WORDS[pi].some((w) => wordOk(q, w))) && otherOk(pi) && pctOk(pi)) where.set(pi, []);
     const known0 = REFS.get(item.q.join(" ") + "|" + (item.pct ?? ""));
@@ -377,11 +380,15 @@ SEARCH_JS = r'''<script>
     const first = item.q[0], maxCov = Math.max(...pool.map((pi) => where.get(pi).length));
     const score = (pi) => {
       const ws = WORDS[pi], cov = where.get(pi).length, prices = where.get(pi).map((x) => x[1]).sort((a, b) => a - b);
-      const head = (ws[0] && wordOk(first, ws[0])) ? 1 : 0;
+      const weighed = p[pi][2] === 1;
+      // the name starts with the word - and it's not a rarity sold in one shop (fruit and vegetables come in many varieties: exempt)
+      const head = (ws[0] && wordOk(first, ws[0]) && (weighed || cov >= maxCov * 0.3)) ? 1 : 0;
       const extra = ws.filter((w) => w.length > 1 && !/^\d/.test(w) && !UNITW.test(w) && !item.q.some((q) => wordOk(q, w))).length;
       const sameAmt = item.amt && amount(p[pi][1]) === item.amt ? 1 : 0;  // "מים 1.5 ליטר" -> the 1.5 litre bottle
-      const exact = item.q.every((q) => ws.includes(q)) ? 1 : 0;  // "קורנפלקס" before "קורנפלור"
-      return [head && p[pi][2] === 1 && !(item.amt && !item.kg) ? 2 : head, exact, cov >= maxCov - 1 ? 1 : 0, sameAmt, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
+      // order: the right version (not Zero/Diet unless asked), the item itself (produce by weight first), a plain produce
+      // name ("עגבניה", not "עגבניות מגי 900 גר"), the size asked for, sold widely, the simplest name, most shops, cheaper
+      return [varOk(pi) ? 1 : 0, head && weighed && !(item.amt && !item.kg) ? 2 : head, weighed ? -extra : 0, sameAmt,
+        cov >= Math.min(maxCov - 1, 0.6 * maxCov) ? 1 : 0, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
     };
     const ranked = pool.sort((a, b) => { const A = score(a), B = score(b); for (let k = 0; k < A.length; k++) if (B[k] !== A[k]) return B[k] - A[k]; return 0; });
     if (known !== undefined && ranked.includes(known)) { ranked.splice(ranked.indexOf(known), 1); ranked.unshift(known); }
@@ -402,7 +409,7 @@ SEARCH_JS = r'''<script>
       const exact = rows.find(([pi]) => pi === ref);
       if (exact) return { pi: ref, price: exact[1], sub: false };
       const opts = rows.filter(([pi]) => where.has(pi) && (p[pi][2] === 1) === weighted && headOk(pi) && sizeOk(pi)
-        && (item.pct == null || PCT[pi] === item.pct));
+        && (item.pct == null || PCT[pi] === item.pct) && varOk(pi));
       if (!opts.length) return null;
       const best = opts.map(([pi, price]) => ({ pi, price, same: refSize && size(p[pi][1]) === refSize ? 1 : 0,
         overlap: WORDS[pi].filter((w) => refWords.has(w)).length })).sort((a, b) => b.same - a.same || b.overlap - a.overlap || a.price - b.price)[0];
