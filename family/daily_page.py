@@ -35,6 +35,8 @@ def load_config():
 
 def seed_decisions():
     """Copy the PC's product decisions into the app's work folder (the cloud run starts empty)."""
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return  # on the PC the app's own decisions are the newest
     app.WORK_DIR.mkdir(parents=True, exist_ok=True)
     for name in ("queries_cache.json", "ref_products.json"):
         src = DATA / name
@@ -75,7 +77,7 @@ def km(v):
     return f'{v:.1f} ק"מ' if isinstance(v, (int, float)) else "משלוח"
 
 
-def render(jobs, titles, stamp):
+def render(jobs, titles, stamp, notice=""):
     e = html.escape
     parts = []
     for n, (job, title) in enumerate(zip(jobs, titles), start=1):
@@ -130,10 +132,12 @@ th,td{{text-align:right;padding:8px 6px;border-top:1px solid var(--line);vertica
 th{{color:var(--muted);font-weight:600}} th:first-child{{width:46%}} .num .sub{{font-size:.78rem}} tr.best td{{background:rgb(34 211 238/.10)}}
 html,body{{max-width:100%}}
 details{{margin-top:10px}} summary{{cursor:pointer;font-weight:600}} ul{{color:var(--muted);font-size:.85rem}} a{{color:var(--accent)}}
-.dl{{font-size:.9rem;margin-top:12px}} footer{{color:var(--muted);font-size:.8rem;margin:18px 0}}
+.dl{{font-size:.9rem;margin-top:12px}}
+.notice{{background:#78350f;color:#fff7ed;border-radius:12px;padding:10px 14px;margin:12px 0;font-size:.92rem}} footer{{color:var(--muted);font-size:.8rem;margin:18px 0}}
 </style></head><body><main>
 <h1>איפה הכי זול לקנות?</h1>
 <div class=meta>עודכן {e(stamp)} · מחירי מדף מהקבצים הרשמיים של הרשתות, בלי מבצעים ומחירי מועדון</div>
+{f'<div class=notice>{e(notice)}</div>' if notice else ""}
 {"".join(parts)}
 <footer>מתעדכן אוטומטית כל בוקר. הסל הכי זול = הסכום הנמוך ביותר לכל המוצרים, מבין החנויות שיש בהן הכי הרבה מהמוצרים (כולל תחליפים).</footer>
 </main></body></html>"""
@@ -155,7 +159,20 @@ def main():
             _, data = app.export_job({**job, "plan": {**job["plan"], "address": "ליד הבית"}}, kind)
             (SITE / f"list{n}-{kind}.xlsx").write_bytes(data)
     stamp = datetime.now().strftime("%d.%m.%Y %H:%M")
-    (SITE / "index.html").write_text(render(jobs, titles, stamp), encoding="utf-8")
+    notice = ""
+    if os.environ.get("GITHUB_ACTIONS"):
+        # GitHub's servers are outside Israel and several chains' price sites don't answer them.
+        last = {}
+        try:
+            last = json.loads((ROOT / "published" / "stamp.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        notice = ("עדכון חלקי: היום המחשב בבית לא עדכן את העמוד, ולכן העדכון נעשה מהענן. חלק מהרשתות "
+                  "(למשל ויקטורי, סופר ספיר / נטו חסכון, זול ובגדול, יילו, קרפור) לא זמינות מחוץ לישראל ולא נבדקו, "
+                  "כך שייתכן שהסל הכי זול שונה.")
+        if last.get("stamp"):
+            notice += f" העדכון המלא האחרון: {last['stamp']}."
+    (SITE / "index.html").write_text(render(jobs, titles, stamp, notice), encoding="utf-8")
     # Run diagnostics (no address): which chains failed and why, readable at <page>/status.txt
     lines = [f"run {stamp}"]
     for job, title in zip(jobs, titles):
@@ -175,6 +192,21 @@ def main():
     for a in addr:
         text = text.replace(a, "<address>")
     (SITE / "status.txt").write_text(text, encoding="utf-8")
+    if "--publish" in sys.argv:  # the PC run: a full page that the GitHub workflow publishes as is
+        pub = ROOT / "published"
+        pub.mkdir(exist_ok=True)
+        for f in pub.iterdir():
+            f.unlink()
+        for f in SITE.iterdir():
+            (pub / f.name).write_bytes(f.read_bytes())
+        (pub / "stamp.json").write_text(json.dumps({"date": datetime.now().strftime("%Y-%m-%d"), "stamp": stamp,
+                                                    "source": "pc"}, ensure_ascii=False), encoding="utf-8")
+        # the PC's product decisions travel with it (new items searched on the PC)
+        DATA.mkdir(parents=True, exist_ok=True)
+        for name in ("queries_cache.json", "ref_products.json"):
+            src = app.WORK_DIR / name
+            if src.exists():
+                (DATA / name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
     print(f"page: {SITE / 'index.html'}")
 
 

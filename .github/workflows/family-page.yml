@@ -1,15 +1,18 @@
-# Every morning: run the price comparison for the family lists and publish the page (GitHub Pages).
-# The lists and the home address come from the repository secret FAMILY_CONFIG (never committed);
-# the page shows no address.
+# Family page (GitHub Pages).
+# Normally the home PC builds the FULL page every morning (all chains answer from Israel) and pushes it
+# to published/; this workflow then publishes it as is. If no page from today arrived by 09:00, it
+# builds a PARTIAL page here (several chains' price sites don't answer servers outside Israel) with a
+# clear notice. The lists and the home address come from the secret FAMILY_CONFIG; the page shows no address.
 name: Family page
 
 on:
   schedule:
-    - cron: "15 4 * * *"   # 04:15 UTC = 06:15 Israel (winter) / 07:15 (summer)
-  workflow_dispatch: {}    # "Run workflow" button for an update on demand
-  push:                    # a code / product-decisions update refreshes the page right away
+    - cron: "0 7 * * *"    # 07:00 UTC = 09:00 Israel (winter) / 10:00 (summer): fallback if the PC didn't publish
+  workflow_dispatch: {}    # "Run workflow" button
+  push:                    # the PC's daily page, product decisions or page code
     branches: [main]
     paths:
+      - "published/**"
       - "family/**"
       - "app.py"
       - "fresh_prices.py"
@@ -35,15 +38,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Use the PC's full page if it is from today
+        id: pc
+        run: |
+          if [ -f published/stamp.json ] && python3 -c "import json,datetime,sys; d=json.load(open('published/stamp.json')); sys.exit(0 if d.get('date')==datetime.date.today().isoformat() else 1)"; then
+            mkdir -p site && cp -r published/. site/ && rm -f site/stamp.json
+            echo "fresh=1" >> "$GITHUB_OUTPUT"
+            echo "Publishing the full page built on the PC today."
+          else
+            echo "fresh=0" >> "$GITHUB_OUTPUT"
+            echo "No page from the PC today: building a partial page here."
+          fi
+
+      - if: steps.pc.outputs.fresh != '1'
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install requirements
+      - if: steps.pc.outputs.fresh != '1'
+        name: Install requirements
         run: pip install requests
 
-      # Geocoding results are cached between runs (polite to OpenStreetMap, and faster).
-      - name: Restore geocoding cache
+      - if: steps.pc.outputs.fresh != '1'
+        name: Restore geocoding cache
         uses: actions/cache@v4
         with:
           path: |
@@ -53,7 +70,8 @@ jobs:
           key: geo-${{ github.run_id }}
           restore-keys: geo-
 
-      - name: Build the page
+      - if: steps.pc.outputs.fresh != '1'
+        name: Build a partial page (cloud)
         env:
           FAMILY_CONFIG: ${{ secrets.FAMILY_CONFIG }}
         run: python family/daily_page.py
