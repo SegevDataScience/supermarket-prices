@@ -1,0 +1,14 @@
+# Personal data: never published
+family/config.json
+history.json
+lists.json
+.il-supermarket-work/
+qa/
+site/
+
+# Python / editors
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+*.log

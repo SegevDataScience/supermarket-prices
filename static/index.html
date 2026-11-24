@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>השוואת סל קניות</title>
+  <link rel="icon" href="data:,">
+  <style>
+    /* Theme: always dark. Bold navy -> violet base, neon cyan / lime accents.
+       Surfaces are near-solid (no backdrop blur) so the animated background costs
+       only one compositor-layer transform and text keeps WCAG AA contrast. */
+    :root {
+      --bg: #060a1f;
+      --card: rgb(11 16 40 / 0.9);
+      --field: rgb(5 8 26 / 0.75);
+      --text: #eef1ff;
+      --muted: #a9b2d9;
+      --line: rgb(150 170 255 / 0.18);
+      --soft: rgb(255 255 255 / 0.06);
+      --accent: #22d3ee;
+      --accent-strong: #67e8f9;
+      --accent-soft: rgb(34 211 238 / 0.13);
+      --lime: #a3e635;
+      --violet: #a78bfa;
+      --on-accent: #041018;
+      --warn: #fbbf24;
+      --warn-soft: rgb(251 191 36 / 0.12);
+      --danger: #fb7185;
+      --danger-soft: rgb(251 113 133 / 0.13);
+      --radius: 16px;
+      --shadow: 0 12px 32px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.05);
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+    body {
+      margin: 0; background: var(--bg); color: var(--text); min-height: 100vh;
+      font: 16px/1.55 "Segoe UI", "Assistant", "Heebo", Arial, sans-serif;
+      position: relative; isolation: isolate; overflow-x: hidden;
+    }
+    /* layer 1: vivid gradient field, slowly drifting (transform only = GPU, no repaint) */
+    body::before {
+      content: ""; position: fixed; inset: -25%; z-index: -2; pointer-events: none;
+      background:
+        radial-gradient(38% 32% at 22% 18%, rgb(124 58 237 / 0.6), transparent 70%),
+        radial-gradient(30% 28% at 82% 26%, rgb(34 211 238 / 0.3), transparent 70%),
+        radial-gradient(28% 26% at 68% 84%, rgb(163 230 53 / 0.2), transparent 70%),
+        radial-gradient(34% 30% at 12% 82%, rgb(56 189 248 / 0.18), transparent 70%),
+        linear-gradient(135deg, #050818 0%, #0a1140 45%, #2b0d63 100%);
+      animation: bg-drift 45s ease-in-out infinite alternate;
+      will-change: transform;
+    }
+    /* layer 2: sharp geometry + fine diagonal lines (static inline SVG) */
+    body::after {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 900' preserveAspectRatio='xMidYMid slice'%3E%3Cpath d='M1230 560 L1440 190 L1440 560 Z' fill='%237c3aed' fill-opacity='.16'/%3E%3Cpath d='M0 900 L0 640 L260 900 Z' fill='%2322d3ee' fill-opacity='.08'/%3E%3Cg fill='none' stroke-width='1.5'%3E%3Cpath d='M-60 780 L540 -40' stroke='%2322d3ee' stroke-opacity='.35'/%3E%3Cpath d='M120 960 L770 -30' stroke='%23a3e635' stroke-opacity='.22'/%3E%3Cpath d='M1500 120 L980 940' stroke='%23a78bfa' stroke-opacity='.25'/%3E%3Cpath d='M1190 110 L1370 420 L1010 420 Z' stroke='%23a3e635' stroke-opacity='.45'/%3E%3Cpath d='M1270 610 L1420 870 L1120 870 Z' stroke='%2322d3ee' stroke-opacity='.35'/%3E%3Cpath d='M90 110 L210 318 L-30 318 Z' stroke='%23a78bfa' stroke-opacity='.45'/%3E%3Cpath d='M640 820 L700 716 L760 820 Z' stroke='%23a3e635' stroke-opacity='.3'/%3E%3C/g%3E%3C/svg%3E") center / cover no-repeat,
+        repeating-linear-gradient(115deg, rgb(255 255 255 / 0.028) 0 1px, transparent 1px 34px);
+    }
+    @keyframes bg-drift {
+      from { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+      to   { transform: translate3d(-5%, 4%, 0) rotate(5deg) scale(1.08); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      body::before { animation: none; }
+    }
+    main { width: min(100% - 32px, 920px); margin: 0 auto; padding: 28px 0 64px; }
+    h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0; letter-spacing: -0.01em; font-weight: 800; background: linear-gradient(100deg, #fff 10%, var(--accent-strong) 55%, var(--lime) 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    h2 { font-size: 1.15rem; margin: 0; }
+    h3 { font-size: 1rem; margin: 0; }
+    p { margin: 0; }
+    .lead { color: var(--muted); margin-top: 6px; }
+    header { margin-bottom: 22px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 20px; margin-bottom: 16px;
+    }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .muted { color: var(--muted); }
+    .small { font-size: .88rem; }
+    .hint { color: var(--muted); font-size: .88rem; margin-top: 6px; }
+    [hidden] { display: none !important; }
+
+    /* controls */
+    input, textarea, select {
+      font: inherit; color: inherit; background: var(--field);
+      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%;
+    }
+    textarea { min-height: 150px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { outline: 3px solid color-mix(in srgb, var(--accent) 25%, transparent); border-color: var(--accent); }
+    label.field { display: block; font-weight: 600; margin-bottom: 6px; }
+    button { font: inherit; cursor: pointer; border-radius: 10px; }
+    .btn { border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 8px 14px; }
+    .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .btn.small { padding: 5px 10px; font-size: .9rem; }
+    .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+    .btn.danger { color: var(--danger); }
+    .btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+    .primary { border: 0; background: linear-gradient(110deg, var(--lime), var(--accent)); color: var(--on-accent); font-weight: 800; box-shadow: 0 0 0 1px rgb(255 255 255 / .12) inset, 0 8px 24px rgb(34 211 238 / .25); padding: 13px 28px; font-size: 1.05rem; }
+    .primary:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 0 0 1px rgb(255 255 255 / .2) inset, 0 10px 30px rgb(163 230 53 / .3); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .tabs, .segmented { display: inline-flex; background: var(--soft); border-radius: 12px; padding: 4px; gap: 4px; }
+    .tabs button, .segmented button { border: 0; background: transparent; color: var(--muted); padding: 7px 14px; font-weight: 600; }
+    .tabs button[aria-selected="true"], .segmented button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+
+    /* list builder */
+    details.mini > summary { cursor: pointer; color: var(--muted); font-size: .9rem; margin-bottom: 8px; }
+    details.mini[open] > summary { margin-bottom: 10px; }
+    #stepper { display: none; }
+    a.src { text-decoration: none; }
+    .lists-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .lists-bar select { width: auto; min-width: 180px; flex: 1 1 180px; }
+    .rows { display: grid; gap: 8px; }
+    .row { display: grid; grid-template-columns: 1fr 90px 92px 36px; gap: 8px; align-items: center; }
+    .row .remove { border: 0; background: transparent; color: var(--muted); font-size: 1.1rem; height: 36px; }
+    .row .remove:hover { color: var(--danger); }
+    .rows-head { display: grid; grid-template-columns: 1fr 90px 92px 36px; gap: 8px; color: var(--muted); font-size: .85rem; padding: 0 2px 2px; }
+
+    /* location */
+    .loc-grid { display: grid; gap: 14px; }
+    .range-wrap { display: flex; align-items: center; gap: 14px; }
+    .range-wrap input[type=range] { padding: 0; border: 0; accent-color: var(--accent); }
+    .range-value { min-width: 64px; font-weight: 700; color: var(--accent); text-align: center; }
+    .check { display: flex; align-items: center; gap: 8px; font-size: .95rem; }
+    .check input { width: auto; accent-color: var(--accent); }
+    .city-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .city { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; background: var(--card); }
+    .city input { width: auto; accent-color: var(--accent); margin: 0; }
+    .city:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+    .city .km { color: var(--muted); font-size: .85rem; }
+    .note { border-radius: 12px; padding: 10px 14px; font-size: .92rem; }
+    .note.warn { background: var(--warn-soft); color: var(--warn); }
+    .note.info { background: var(--soft); color: var(--muted); }
+
+    .actions { display: flex; align-items: center; gap: 14px; margin: 6px 0 22px; flex-wrap: wrap; }
+
+    /* messages */
+    .msg { border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+    .msg.error { background: var(--danger-soft); color: var(--danger); }
+    .msg.info { background: var(--accent-soft); color: var(--accent-strong); }
+
+    /* progress */
+    .stepper { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 6px 0 16px; counter-reset: step; }
+    .step { text-align: center; font-size: .9rem; color: var(--muted); position: relative; }
+    .step .dot { width: 30px; height: 30px; border-radius: 50%; margin: 0 auto 6px; display: grid; place-items: center; background: var(--soft); border: 2px solid var(--line); font-weight: 700; font-size: .85rem; }
+    .step.done .dot { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .step.current { color: var(--text); font-weight: 700; }
+    .step.current .dot { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
+    @media (prefers-reduced-motion: reduce) { .step.current .dot { animation: none; } }
+    .progress-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .elapsed { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+    /* results */
+    .meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: .9rem; margin-bottom: 12px; }
+    .meta .stale { color: var(--warn); font-weight: 600; }
+    .understood { background: var(--soft); border-radius: 12px; padding: 12px 14px; font-size: .92rem; margin-bottom: 14px; }
+    .understood div { margin: 2px 0; }
+    .hero { background: linear-gradient(135deg, rgb(34 211 238 / .16), rgb(124 58 237 / .14) 60%, var(--card)), var(--card); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: var(--shadow), 0 0 40px rgb(34 211 238 / .12); }
+    .hero .tag { color: var(--accent); font-weight: 700; font-size: .9rem; }
+    .hero .store { font-size: clamp(1.35rem, 4vw, 1.7rem); font-weight: 800; margin: 4px 0 2px; }
+    .hero .total { font-size: clamp(2rem, 7vw, 2.6rem); font-weight: 800; color: var(--lime); margin-top: 10px; font-variant-numeric: tabular-nums; }
+    .hero .savings { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .chip { display: inline-block; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: .88rem; }
+    .chip.good { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); color: var(--accent-strong); }
+    .hero-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; min-width: 560px; font-size: .95rem; }
+    th, td { padding: 11px 12px; text-align: right; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { background: var(--soft); font-weight: 600; white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    th button { border: 0; background: transparent; font-weight: 600; color: inherit; padding: 0; }
+    th button::after { content: " ↕"; color: var(--muted); font-size: .8rem; }
+    th button[data-dir="asc"]::after { content: " ↑"; color: var(--accent); }
+    th button[data-dir="desc"]::after { content: " ↓"; color: var(--accent); }
+    tr.best td { background: var(--accent-soft); }
+    tr.best td:first-child { box-shadow: inset -4px 0 0 var(--accent); }
+    .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .sub { display: block; color: var(--muted); font-size: .84rem; }
+    details.item { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; background: var(--card); }
+    details.item > summary { list-style: none; cursor: pointer; padding: 12px 14px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; }
+    details.item > summary::-webkit-details-marker { display: none; }
+    details.item > summary::before { content: "‹"; color: var(--muted); transition: transform .15s; display: inline-block; margin-left: 6px; }
+    details.item[open] > summary::before { transform: rotate(-90deg); }
+    details.item .picks { padding: 0 14px 12px; display: grid; gap: 6px; }
+    .pick { display: grid; grid-template-columns: minmax(110px, 1fr) 2fr auto; gap: 10px; padding: 8px 10px; border-radius: 10px; align-items: baseline; }
+    .pick.cheap { background: var(--accent-soft); }
+    .pick.none { color: var(--muted); }
+    details.section { border-top: 1px solid var(--line); padding: 12px 2px; }
+    a.src { color: var(--accent); text-decoration: underline; }
+    details.section > summary { cursor: pointer; font-weight: 600; }
+    details.section ul { margin: 10px 0 0; padding-inline-start: 20px; color: var(--muted); }
+    details.section li { margin: 4px 0; }
+    .block-title { margin: 22px 0 10px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+
+    /* history */
+    .history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .hcard { display: flex; flex-direction: column; gap: 6px; padding: 16px; margin: 0; }
+    .hcard .when { color: var(--muted); font-size: .84rem; }
+    .hcard .where { font-weight: 600; }
+    .hcard .win { font-size: .95rem; }
+    .hcard .win strong { color: var(--accent-strong); }
+    .hcard .btn { margin-top: auto; align-self: flex-start; }
+
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: .92rem; z-index: 10; }
+
+    @media (max-width: 640px) {
+      main { width: min(100% - 24px, 920px); padding-top: 18px; }
+      .card { padding: 16px; }
+      .row, .rows-head { grid-template-columns: 1fr 70px 80px 30px; gap: 6px; }
+      .primary { width: 100%; }
+      .stepper { gap: 2px; }
+      .step { font-size: .78rem; }
+      .pick { grid-template-columns: 1fr auto; }
+      .pick .prod { grid-column: 1 / -1; order: 3; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>איפה הכי זול לקנות?</h1>
+  </header>
+
+  <form id="form" novalidate>
+    <section class="card" aria-labelledby="what-title">
+      <div class="card-head">
+        <h2 id="what-title">מה קונים?</h2>
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" id="tab-text-btn" aria-selected="true" aria-controls="tab-text">טקסט חופשי</button>
+          <button type="button" role="tab" id="tab-list-btn" aria-selected="false" aria-controls="tab-list">בניית רשימה</button>
+        </div>
+      </div>
+
+      <div id="tab-text" role="tabpanel">
+        <textarea id="request-text" maxlength="2000" aria-label="בקשה בטקסט חופשי" placeholder="איפה הכי זול לקנות את זה? אני גר ברחוב הרצל 50, רמת גן: מלפפונים, עגבניות, חזה עוף 1.5 ק&quot;ג, גבינה צהובה, ביצים, פיתות כוסמין"></textarea>
+        <span id="text-count" hidden>0</span>
+      </div>
+
+      <div id="tab-list" role="tabpanel" hidden>
+        <details class="mini">
+          <summary>רשימות שמורות</summary>
+          <div class="lists-bar">
+            <select id="saved-lists" aria-label="רשימות שמורות"><option value="">בחרו רשימה…</option></select>
+            <button type="button" class="btn small" id="list-load">טען</button>
+            <button type="button" class="btn small" id="list-save">שמור בשם…</button>
+            <button type="button" class="btn small" id="list-rename">שנה שם</button>
+            <button type="button" class="btn small danger" id="list-delete">מחק</button>
+          </div>
+        </details>
+        <div class="rows" id="rows"></div>
+        <button type="button" class="btn small" id="add-row" style="margin-top:10px">+ הוסף מוצר</button>
+        <datalist id="item-suggestions"></datalist>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="where-title">
+      <div class="card-head">
+        <h2 id="where-title">איפה?</h2>
+        <div class="segmented" role="group" aria-label="סוג חיפוש">
+          <button type="button" id="loc-radius-btn" aria-pressed="true">רדיוס</button>
+          <button type="button" id="loc-cities-btn" aria-pressed="false">ערים</button>
+        </div>
+      </div>
+      <div class="loc-grid">
+        <div>
+          <input id="address" maxlength="200" placeholder="כתובת (הרצל 50, רמת גן)" aria-label="כתובת" autocomplete="street-address">
+          <p class="hint" id="address-hint" hidden></p>
+        </div>
+        <div id="loc-radius">
+          <div class="range-wrap">
+            <input id="radius" type="range" min="2" max="25" step="1" value="4" aria-describedby="radius-value">
+            <output id="radius-value" class="range-value">4 ק״מ</output>
+          </div>
+          <label class="check" style="margin-top:8px"><input type="checkbox" id="auto-expand" checked> להרחיב אם יש מעט סניפים</label>
+        </div>
+        <div id="loc-cities" hidden>
+          <button type="button" class="btn" id="load-cities">הצג ערים קרובות</button>
+          <div id="cities-status" class="hint"></div>
+          <div class="city-list" id="city-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="actions">
+      <details class="mini">
+        <summary>הגדרות</summary>
+        <div class="segmented" role="group" aria-label="מהירות החיפוש">
+          <button type="button" id="speed-fast" aria-pressed="true" title="השרת מריץ את הסקריפטים ו-Claude רק בוחר מוצרים">מהיר · כדקה</button>
+          <button type="button" id="speed-thorough" aria-pressed="false" title="אותו חיפוש, בדיקה רחבה יותר בפעם הראשונה">יסודי · כמה דקות</button>
+        </div>
+        <button type="button" class="btn small danger" id="stop-all" style="margin-top:8px" title="עוצר חיפוש שרץ כאן או בחלון אחר של האפליקציה">עצור כל חיפוש פעיל</button>
+      </details>
+      <button type="submit" class="primary" id="submit">השווה מחירים</button>
+    </div>
+  </form>
+
+  <div id="message" class="msg" role="status" aria-live="polite" hidden></div>
+
+  <section class="card" id="progress" hidden aria-live="polite">
+    <div class="stepper" id="stepper"></div>
+    <div class="progress-foot">
+      <div>
+        <div id="progress-text">מתחיל…</div>
+        <div class="elapsed small" id="progress-elapsed"></div>
+      </div>
+      <button type="button" class="btn danger" id="stop">עצור חיפוש</button>
+    </div>
+    <div class="note warn" id="progress-warn" hidden style="margin-top:12px"></div>
+  </section>
+
+  <section id="results" hidden></section>
+
+  <details id="history-section" class="section" hidden>
+    <summary>חיפושים קודמים</summary>
+    <div class="history-grid" id="history"></div>
+  </details>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const UNITS = ["יח'", 'ק"ג', "גרם", "ליטר"];
+  const NOT_COVERED = ["נתיב החסד", "סיטי מרקט", "מעיין 2000", "ברקת"];
+  const SHELF_NOTE = "המחירים הם מחירי מדף מהקבצים הרשמיים, בלי מבצעים ובלי מחירי מועדון.";
+  const COVERED_CHAINS = ["שופרסל", "קרפור", "רמי לוי", "אושר עד", "יוחננוף", "טיב טעם", "קשת טעמים", "דור אלון (am:pm)", "פרשמרקט", "סאלח דבאח", "סטופ מרקט", "פוליצר", "ויקטורי", "מחסני השוק", "חצי חינם", "סופר יודה", "יילו", "שוק העיר", "קינג סטור", "סופר ספיר", "נטו חסכון", "זול ובגדול"];
+  const STEPS = [
+    { label: "מאתר סניפים", keys: ["find_stores"] },
+    { label: "מוריד מחירים", keys: ["prices"] },
+    { label: "מתאים מוצרים", keys: ["search", "basket"] },
+    { label: "מסכם", keys: ["answer"] },
+  ];
+  const money = new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS" });
+  const kmFmt = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 1 });
+
+  const state = {
+    mode: "text", loc: "radius", lists: [], cities: [], citiesFor: "",
+    job: null, jobServerId: null, pollTimer: null, clockTimer: null, startedAt: 0,
+    sort: { key: "rank", dir: "asc" }, lastJob: null,
+  };
+
+  // ---------- helpers ----------
+  function el(tag, text, cls) {
+    const n = document.createElement(tag);
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    if (cls) n.className = cls;
+    return n;
+  }
+  // Intl adds U+200F marks around the number; some fonts draw them as boxes.
+  const fmtMoney = (v) => (typeof v === "number" && Number.isFinite(v) ? money.format(v).replace(/‏/g, "") : "—");
+  const fmtKm = (v) => (typeof v === "number" && Number.isFinite(v) ? `${kmFmt.format(v)} ק״מ` : "—");
+  const fmtDate = (iso) => { if (!iso) return ""; const [y, m, d] = iso.slice(0, 10).split("-"); return `${d}.${m}.${y}`; };
+  const fmtDateTime = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" }); };
+  const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  function toast(text) { const t = el("div", text, "toast"); document.body.append(t); setTimeout(() => t.remove(), 2200); }
+
+  async function api(path, options = {}) {
+    const opts = { cache: "no-store", ...options };
+    if (opts.json !== undefined) {
+      opts.method = opts.method || "POST";
+      opts.headers = { "Content-Type": "application/json" };
+      opts.body = JSON.stringify(opts.json);
+      delete opts.json;
+    }
+    let timer;
+    if (opts.timeoutMs) {
+      const ctrl = new AbortController();
+      opts.signal = ctrl.signal;
+      timer = setTimeout(() => ctrl.abort(), opts.timeoutMs);
+      delete opts.timeoutMs;
+    }
+    let res;
+    try { res = await fetch(path, opts); } // TypeError on network failure, AbortError on timeout
+    finally { clearTimeout(timer); }
+    let data = {};
+    try { data = await res.json(); } catch { data = {}; }
+    return { status: res.status, ok: res.ok, data };
+  }
+  function showMessage(text, kind = "error") {
+    const m = $("message");
+    m.className = `msg ${kind}`;
+    m.textContent = text;
+    m.hidden = !text;
+  }
+
+  // ---------- tabs ----------
+  function setMode(mode) {
+    state.mode = mode;
+    $("tab-text-btn").setAttribute("aria-selected", mode === "text");
+    $("tab-list-btn").setAttribute("aria-selected", mode === "list");
+    $("tab-text").hidden = mode !== "text";
+    $("tab-list").hidden = mode !== "list";
+    $("address-hint").hidden = true;
+    if (mode === "list" && !$("rows").children.length) addRow();
+  }
+  $("tab-text-btn").onclick = () => setMode("text");
+  $("tab-list-btn").onclick = () => setMode("list");
+  $("request-text").addEventListener("input", () => { $("text-count").textContent = $("request-text").value.length; });
+
+  // ---------- list builder ----------
+  function addRow(item = {}, after = null, focus = false) {
+    const row = el("div", undefined, "row");
+    const name = el("input"); name.className = "name"; name.maxLength = 100; name.placeholder = "מוצר"; name.setAttribute("list", "item-suggestions"); name.setAttribute("aria-label", "מוצר"); name.value = item.name || "";
+    const qty = el("input"); qty.className = "qty"; qty.type = "number"; qty.min = "0"; qty.step = "any"; qty.inputMode = "decimal"; qty.placeholder = "1"; qty.setAttribute("aria-label", "כמות"); qty.value = item.quantity ?? "";
+    const unit = el("select"); unit.className = "unit"; unit.setAttribute("aria-label", "יחידה");
+    UNITS.forEach((u) => { const o = el("option", u); o.value = u; unit.append(o); });
+    unit.value = UNITS.includes(item.unit) ? item.unit : UNITS[0];
+    const remove = el("button", "✕", "remove"); remove.type = "button"; remove.setAttribute("aria-label", "הסר שורה");
+    remove.onclick = () => { row.remove(); if (!$("rows").children.length) addRow(); };
+    const onEnter = (e) => { if (e.key === "Enter") { e.preventDefault(); addRow({}, row, true); } };
+    name.addEventListener("keydown", onEnter);
+    qty.addEventListener("keydown", onEnter);
+    row.append(name, qty, unit, remove);
+    if (after) after.after(row); else $("rows").append(row);
+    if (focus) name.focus();
+    return row;
+  }
+  $("add-row").onclick = () => addRow({}, null, true);
+  function readRows() {
+    return [...$("rows").querySelectorAll(".row")].map((r) => ({
+      name: r.querySelector(".name").value.trim(),
+      quantity: r.querySelector(".qty").value,
+      unit: r.querySelector(".unit").value,
+    })).filter((r) => r.name);
+  }
+  function setRows(items) {
+    $("rows").replaceChildren();
+    (items.length ? items : [{}]).forEach((i) => addRow(i));
+  }
+  async function loadSuggestions() {
+    try {
+      const { data } = await api("/api/items");
+      const dl = $("item-suggestions"); dl.replaceChildren();
+      (data.items || []).forEach((n) => { const o = el("option"); o.value = n; dl.append(o); });
+    } catch {}
+  }
+
+  // saved lists
+  function renderLists(selected = "") {
+    const sel = $("saved-lists");
+    sel.replaceChildren(el("option", "רשימות שמורות…"));
+    sel.firstChild.value = "";
+    state.lists.forEach((l) => { const o = el("option", `${l.name} (${(l.items || []).length})`); o.value = l.name; sel.append(o); });
+    sel.value = selected;
+  }
+  async function loadLists(selected) {
+    try { const { data } = await api("/api/lists"); state.lists = data.lists || []; renderLists(selected); } catch {}
+  }
+  async function listAction(path, body, okText) {
+    try {
+      const { ok, data } = await api(path, { json: body });
+      if (!ok) { showMessage(data.error || "הפעולה נכשלה."); return false; }
+      state.lists = data.lists || []; renderLists(body.name || body.new || ""); toast(okText); showMessage(""); return true;
+    } catch { showMessage("השרת לא זמין."); return false; }
+  }
+  $("list-load").onclick = () => {
+    const l = state.lists.find((x) => x.name === $("saved-lists").value);
+    if (!l) { showMessage("בחרו רשימה לטעינה.", "info"); return; }
+    setRows(l.items || []); toast(`נטענה: ${l.name}`);
+  };
+  $("list-save").onclick = async () => {
+    const items = readRows();
+    if (!items.length) { showMessage("אין מוצרים לשמירה.", "info"); return; }
+    const name = prompt("שם לרשימה:", $("saved-lists").value || "קניות שבועיות");
+    if (name && name.trim()) await listAction("/api/lists/save", { name: name.trim(), items }, "הרשימה נשמרה");
+  };
+  $("list-rename").onclick = async () => {
+    const old = $("saved-lists").value;
+    if (!old) { showMessage("בחרו רשימה לשינוי שם.", "info"); return; }
+    const name = prompt("שם חדש:", old);
+    if (name && name.trim() && name.trim() !== old) await listAction("/api/lists/rename", { old, new: name.trim() }, "השם שונה");
+  };
+  $("list-delete").onclick = async () => {
+    const name = $("saved-lists").value;
+    if (!name) { showMessage("בחרו רשימה למחיקה.", "info"); return; }
+    if (confirm(`למחוק את הרשימה "${name}"?`)) await listAction("/api/lists/delete", { name }, "הרשימה נמחקה");
+  };
+
+  // ---------- location ----------
+  function setLoc(loc) {
+    state.loc = loc;
+    $("loc-radius-btn").setAttribute("aria-pressed", loc === "radius");
+    $("loc-cities-btn").setAttribute("aria-pressed", loc === "cities");
+    $("loc-radius").hidden = loc !== "radius";
+    $("loc-cities").hidden = loc !== "cities";
+  }
+  $("loc-radius-btn").onclick = () => setLoc("radius");
+  $("loc-cities-btn").onclick = () => setLoc("cities");
+  $("radius").addEventListener("input", () => { $("radius-value").textContent = `${$("radius").value} ק״מ`; });
+  $("address").addEventListener("input", () => {
+    if (state.citiesFor && $("address").value.trim() !== state.citiesFor) {
+      state.cities = []; state.citiesFor = ""; $("city-list").replaceChildren();
+      $("cities-status").textContent = "הכתובת השתנתה: לחצו שוב על \"הצג ערים קרובות\".";
+    }
+  });
+  async function loadCities(preselect = []) {
+    const address = $("address").value.trim();
+    if (!address) { $("cities-status").textContent = "הזינו כתובת קודם."; $("address").focus(); return; }
+    $("load-cities").disabled = true;
+    $("cities-status").textContent = "מאתר ערים קרובות… (בפעם הראשונה באזור חדש זה יכול לקחת כדקה)";
+    $("city-list").replaceChildren();
+    try {
+      const { ok, data } = await api(`/api/cities?address=${encodeURIComponent(address)}`);
+      if (!ok) { $("cities-status").textContent = data.error || "לא ניתן לטעון ערים."; return; }
+      state.cities = data.cities || []; state.citiesFor = address;
+      $("cities-status").textContent = state.cities.length
+        ? `${state.cities.length} ערים עם סניפים עד 30 ק״מ (מרחק ממרכז העיר, בקו אווירי). בחרו ערים לחיפוש:`
+        : "לא נמצאו ערים עם סניפים עד 30 ק״מ.";
+      state.cities.forEach((c) => {
+        const lab = el("label", undefined, "city");
+        const cb = el("input"); cb.type = "checkbox"; cb.value = c.city; cb.dataset.km = c.km;
+        cb.checked = preselect.includes(c.city);
+        lab.title = c.chains.join(", ");
+        lab.append(cb, el("span", c.city), el("span", `${kmFmt.format(c.km)} ק״מ · ${c.branches} סניפים`, "km"));
+        $("city-list").append(lab);
+      });
+    } catch { $("cities-status").textContent = "השרת לא זמין."; }
+    finally { $("load-cities").disabled = false; }
+  }
+  $("load-cities").onclick = () => loadCities();
+  const selectedCities = () => [...$("city-list").querySelectorAll("input:checked")].map((cb) => ({ city: cb.value, km: Number(cb.dataset.km) }));
+
+  // ---------- submit / progress ----------
+  let speed = "fast";
+  try { if (localStorage.getItem("speed") === "thorough") speed = "thorough"; } catch {}
+  function setSpeed(v) {
+    speed = v;
+    $("speed-fast").setAttribute("aria-pressed", v === "fast");
+    $("speed-thorough").setAttribute("aria-pressed", v === "thorough");
+    try { localStorage.setItem("speed", v); } catch {}
+  }
+  $("speed-fast").onclick = () => setSpeed("fast");
+  $("speed-thorough").onclick = () => setSpeed("thorough");
+  setSpeed(speed);
+
+  function buildRequest() {
+    const body = { mode: state.mode, address: $("address").value.trim(), speed };
+    if (state.loc === "cities") {
+      const cities = selectedCities();
+      if (!body.address) return { error: "במצב ערים צריך כתובת." };
+      if (!cities.length) return { error: "בחרו לפחות עיר אחת (לחצו \"הצג ערים קרובות\")." };
+      body.location = { mode: "cities", cities };
+    } else {
+      body.location = { mode: "radius", radius_km: Number($("radius").value), auto_expand: $("auto-expand").checked };
+    }
+    if (state.mode === "text") {
+      body.text = $("request-text").value.trim();
+      if (!body.text) return { error: "כתבו מה לקנות." };
+    } else {
+      body.items = readRows();
+      if (!body.address) return { error: "חסרה כתובת: באיזו כתובת או עיר לחפש סניפים?" };
+      if (!body.items.length) return { error: "הוסיפו לפחות מוצר אחד." };
+    }
+    return { body };
+  }
+
+  // The form stays editable during a search: pressing the button again stops the running search
+  // and starts the new one.
+  function setBusy(busy) {
+    $("submit").disabled = false;
+    $("submit").textContent = busy ? "עצור והתחל חיפוש חדש" : "השווה מחירים";
+  }
+  function renderStepper(stepKey) {
+    const idx = STEPS.findIndex((s) => s.keys.includes(stepKey));
+    $("stepper").replaceChildren(...STEPS.map((s, i) => {
+      const n = el("div", undefined, `step${i < idx ? " done" : ""}${i === idx ? " current" : ""}`);
+      n.append(el("div", i < idx ? "✓" : String(i + 1), "dot"), el("div", s.label));
+      return n;
+    }));
+  }
+  function startClock() {
+    clearInterval(state.clockTimer);
+    state.startedAt = Date.now();
+    const tick = () => {
+      const s = Math.floor((Date.now() - state.startedAt) / 1000);
+      $("progress-elapsed").textContent = `עברו ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} דקות`;
+    };
+    tick(); state.clockTimer = setInterval(tick, 1000);
+  }
+  function endJob() {
+    clearTimeout(state.pollTimer); clearInterval(state.clockTimer);
+    $("progress-warn").hidden = true;
+    state.job = null; setBusy(false); $("progress").hidden = true;
+  }
+
+  async function submitSearch(body) {
+    const seq = state.reqSeq = (state.reqSeq || 0) + 1;
+    if (state.job || state.submitting) {  // a search is running (or starting): replace it
+      body = { ...body, replace: true };
+      clearTimeout(state.pollTimer); state.job = null;
+    }
+    state.submitting = true;
+    showMessage(""); $("results").hidden = true;
+    setBusy(true);
+    $("progress").hidden = false; renderStepper(null); startClock();
+    $("progress-text").textContent = body.mode === "text" ? "מבין את הבקשה…" : "מתחיל…";
+    $("stop").disabled = true;
+    $("progress-warn").hidden = true; state.pollFailSince = 0;
+    let res;
+    try { res = await api("/api/search", { json: body, timeoutMs: body.mode === "text" ? 300000 : 120000 }); }
+    catch (e) {
+      if (seq !== state.reqSeq) return;  // a newer search took over
+      state.submitting = false;
+      endJob();
+      showMessage(e && e.name === "AbortError"
+        ? "השרת לא ענה בזמן ולא התחיל חיפוש. ודאו שחלון השרת (start.bat) פתוח ולחצו שוב."
+        : "אין חיבור לשרת - ייתכן שחלון השרת (start.bat) נסגר או אותחל. הפעילו אותו ולחצו שוב.");
+      return;
+    }
+    if (seq !== state.reqSeq) return;  // a newer search took over (the server stops this one)
+    state.submitting = false;
+    if (!res.ok && res.status === 409 && !body.replace) {
+      // A search is still running (e.g. from another window or before a page reload).
+      if (confirm("חיפוש קודם עדיין רץ. לעצור אותו ולהתחיל את החיפוש החדש?")) { endJob(); submitSearch({ ...body, replace: true }); return; }
+    }
+    if (!res.ok) { endJob(); showMessage(res.data.error || `שגיאת שרת (${res.status})`, res.status === 422 ? "info" : "error"); return; }
+    state.job = res.data.job_id; state.jobServerId = res.data.server_id;
+    $("stop").disabled = false;
+    $("progress-text").textContent = "מפעיל את החיפוש…";
+    state.pollTimer = setTimeout(poll, 800);
+  }
+
+  async function poll() {
+    if (!state.job) return;
+    const id = state.job;
+    let res;
+    try { res = await api(`/api/jobs/${encodeURIComponent(id)}`, { timeoutMs: 15000 }); }
+    catch {
+      if (state.job !== id) return;  // replaced by a new search meanwhile
+      state.pollFailSince = state.pollFailSince || Date.now();
+      const down = Math.round((Date.now() - state.pollFailSince) / 1000);
+      if (down >= 45) {
+        endJob();
+        showMessage(`אין חיבור לשרת כבר ${down} שניות - כנראה שחלון השרת (start.bat) נסגר והחיפוש נקטע. הפעילו אותו ולחצו שוב.`);
+        loadHistory(); return;
+      }
+      $("progress-text").textContent = `השרת לא עונה (${down} שנ'), מנסה להתחבר מחדש…`;
+      state.pollTimer = setTimeout(poll, 3000); return;
+    }
+    if (state.job !== id) return;  // replaced by a new search meanwhile
+    state.pollFailSince = 0;
+    const job = res.data;
+    if (res.status === 404 || (job.server_id && state.jobServerId && job.server_id !== state.jobServerId)) {
+      endJob(); showMessage("השרת אותחל - החיפוש נקטע, לחץ שוב"); loadHistory(); return;
+    }
+    if (!res.ok) { state.pollTimer = setTimeout(poll, 2500); return; }
+    if (job.status === "running") {
+      renderStepper(job.step_key);
+      $("progress-text").textContent = job.step || "עובד…";
+      const idle = job.idle_seconds || 0, limit = job.idle_warning_seconds || 900;
+      $("progress-warn").hidden = idle < limit;
+      if (idle >= limit) $("progress-warn").textContent = `אין התקדמות כבר ${Math.floor(idle / 60)} דקות. ייתכן שהחיפוש תקוע - אפשר ללחוץ "עצור חיפוש" ולנסות שוב.${job.log_file ? ` יומן: ${job.log_file}` : ""}`;
+      state.pollTimer = setTimeout(poll, 2500);
+      return;
+    }
+    endJob();
+    if (job.status === "done") renderResult(job);
+    else if (job.status === "stopped") showMessage("החיפוש נעצר", "info");
+    else showMessage(`${job.error || "החיפוש נכשל."}${job.log_file ? ` (יומן: ${job.log_file})` : ""}`);
+    loadHistory(); loadSuggestions();
+  }
+
+  $("stop-all").onclick = async () => {
+    const b = $("stop-all"); b.disabled = true; b.textContent = "עוצר…";
+    try {
+      const res = await api("/api/jobs/stop-all", { method: "POST", timeoutMs: 120000 });
+      const d = res.data || {};
+      toast(d.stopped_here || d.stopped_other_window ? "החיפוש הפעיל נעצר" : (d.still_busy ? "חיפוש בחלון אחר עדיין רץ - סגרו את החלון הזה" : "אין חיפוש פעיל"));
+    } catch { toast("אין חיבור לשרת"); }
+    b.disabled = false; b.textContent = "עצור כל חיפוש פעיל";
+  };
+
+  $("stop").onclick = async () => {
+    if (!state.job) return;
+    $("stop").disabled = true; $("progress-text").textContent = "עוצר…";
+    try { await api(`/api/jobs/${encodeURIComponent(state.job)}/stop`, { method: "POST" }); } catch {}
+  };
+
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const { body, error } = buildRequest();
+    if (error) { showMessage(error, "info"); return; }
+    submitSearch(body);
+  });
+
+  // ---------- results ----------
+  function completeStores(stores) {
+    return stores.filter((s) => typeof s.total_ils === "number" && s.total_ils > 0 && !(s.missing_items || []).length);
+  }
+  function hasWinner(r) {
+    const w = r.winner;
+    return !!(w && w.store && typeof w.total_ils === "number" && w.total_ils > 0 && (r.stores || []).length);
+  }
+
+  // Results, kept short: one summary line, the winner, one compact table, convenience shops as a
+  // partial-basket section at the bottom, per-item details folded, everything else in "פרטים נוספים".
+  function renderResult(job) {
+    state.lastJob = job;
+    const r = job.result, box = $("results");
+    box.replaceChildren(); box.hidden = false;
+    if (!r || typeof r !== "object") {
+      box.append(el("h2", "תשובת Claude"), el("pre", job.raw || job.stderr || "לא התקבלה תשובה."));
+      return;
+    }
+    box.append(summaryLine(job, r.search));
+    if (!hasWinner(r)) {
+      box.append(emptyState(r, job.facts));
+      box.append(section("פרטים נוספים", [coverageList(r.coverage, job.facts), unpricedBlock(job.unpriced_shops)]));
+      return;
+    }
+    const all = r.stores || [];
+    const main = all.filter((s) => s.kind !== "convenience");
+    const conv = all.filter((s) => s.kind === "convenience");
+    box.append(hero(r, job, main));
+    box.append(storeTable(main, r.winner));
+    box.append(exportBar(job));
+    if (conv.length) {
+      const t = el("div", undefined, "block-title"); t.append(el("h2", "חנויות נוחות · סל חלקי"));
+      box.append(t, storeTable(conv, r.winner, true));
+    }
+    box.append(section("פירוט לפי מוצר", [itemsSection(r.items || [], new Set(conv.map((s) => s.store)))]));
+    box.append(section("פרטים נוספים", [notesList(r.assumptions || []), coverageList(r.coverage, job.facts), unpricedBlock(job.unpriced_shops)]));
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // One line: price date (verified newest file), radius / cities, and only real warnings.
+  function summaryLine(job, search) {
+    const m = el("div", undefined, "meta");
+    const fresh = job.price_freshness || {};
+    const dates = [...new Set(Object.values(fresh).map((f) => f.date).filter(Boolean))].sort();
+    const newest = Object.values(fresh).length && Object.values(fresh).every((f) => f && f.newest);
+    if (dates.length) m.append(el("span", `מחירים מ-${dates.map(fmtDate).join(", ")}${newest ? " · הקובץ העדכני ביותר של כל רשת" : ""}`));
+    const loc = (job.plan && job.plan.location) || {};
+    if (loc.mode === "cities") m.append(el("span", `ערים: ${loc.cities.map((c) => c.city).join(", ")}`));
+    else if (search && typeof search.used_radius_km === "number") {
+      m.append(el("span", `רדיוס ${search.used_radius_km} ק״מ${search.auto_expanded && search.used_radius_km !== loc.radius_km ? ` (הורחב מ-${loc.radius_km})` : ""}`));
+    }
+    const stale = ((job.result && job.result.stores) || []).filter((s) => fresh[s.store_ref] && fresh[s.store_ref].stale);
+    if (stale.length) m.append(el("span", `⚠ לא אומת שזה הקובץ העדכני ביותר: ${stale.map((s) => s.store).join(", ")}`, "stale"));
+    return m;
+  }
+
+  function emptyState(r, facts) {
+    const s = r.search || {}, f = facts || {};
+    const nearest = f.nearest_store || s.nearest_store;
+    const nk = typeof f.nearest_store_km === "number" ? f.nearest_store_km : s.nearest_store_km;
+    const used = typeof s.used_radius_km === "number" ? s.used_radius_km : null;
+    const box = el("div", undefined, "msg error");
+    let t = used !== null ? `לא נמצאה השוואה עד ${used} ק״מ מהכתובת.` : "לא נמצאה השוואה ליד הכתובת.";
+    t += nearest ? ` הסניף הקרוב ביותר: ${nearest}${typeof nk === "number" ? `, ${fmtKm(nk)}` : ""}.` : "";
+    t += " נסו רדיוס גדול יותר או את מצב \"ערים\".";
+    box.textContent = t;
+    return box;
+  }
+
+  // "≈" = the store was located only by its town centre, so the distance is approximate.
+  const where = (s) => (s.kind === "delivery" ? "משלוח" : `${s.approx_location ? "≈ " : ""}${fmtKm(s.distance_km)}`);
+
+  function hero(r, job, main) {
+    const w = r.winner, card = el("section", undefined, "card hero");
+    card.append(el("div", "הסל הכי זול", "tag"), el("div", w.store, "store"));
+    card.append(el("div", w.kind === "delivery" ? "משלוח עד הבית (לפני דמי משלוח)" : `${w.address} · ${fmtKm(w.distance_km)}`, "muted"));
+    // The cheapest store = the lowest total for all the items together, among the stores that have
+    // the most of the requested items (substitutes count as found).
+    card.append(el("div", fmtMoney(w.total_ils), "total"));
+    if (w.items_total) card.append(el("div", `${w.items_found} מתוך ${w.items_total} מוצרים${w.substitutes ? ` · ${w.substitutes} תחליפים` : ""}`, "muted small"));
+    const next = main.filter((s) => s.store !== w.store && s.items_found === w.items_found && typeof s.total_ils === "number")
+      .sort((a, b) => a.total_ils - b.total_ils)[0];
+    if (next) {
+      const row = el("div", undefined, "hero-actions");
+      row.append(el("span", `חוסך ${fmtMoney(next.total_ils - w.total_ils)} לעומת ${next.store}`, "chip good"));
+      card.append(row);
+    }
+    return card;
+  }
+
+  function sourceLink(s) {
+    const src = s.source || {};
+    if (!src.url) return null;
+    const a = el("a", "↗", "src");
+    a.setAttribute("aria-label", "מקור המחיר");
+    a.href = src.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+    a.title = ["מקור המחיר", src.file && `קובץ: ${src.file}`, src.store_check && `בדיקת סניף: ${src.store_check}`, src.login].filter(Boolean).join("\n");
+    return a;
+  }
+
+  function storeTable(stores, winner, isConvenience = false) {
+    const outer = el("div"), wrap = el("div", undefined, "table-wrap"), table = el("table");
+    const head = table.createTHead().insertRow();
+    const sortBtn = (label, key) => {
+      const th = el("th"), b = el("button", label); b.type = "button";
+      if (state.sort.key === key) b.dataset.dir = state.sort.dir;
+      b.onclick = () => {
+        state.sort = { key, dir: state.sort.key === key && state.sort.dir === "asc" ? "desc" : "asc" };
+        outer.replaceWith(storeTable(stores, winner, isConvenience));
+      };
+      th.append(b); return th;
+    };
+    head.append(el("th", "חנות"), sortBtn("מרחק", "distance"), sortBtn("מחיר", "total"));
+    // Price = the like-for-like total (identical products only); stores outside it show their
+    // partial basket, ranked after them.
+    // Default order = the server's ranking (most items found, then the lowest total).
+    const val = (s) => (state.sort.key === "distance" ? (s.kind === "delivery" ? 999 : s.distance_km)
+      : state.sort.key === "total" ? s.total_ils : stores.indexOf(s));
+    const partial = (s) => (s.missing_items || []).length > 0;
+    const sorted = [...stores].sort((a, b) => {
+      if (state.sort.key === "total" && (a.items_found || 0) !== (b.items_found || 0)) return (b.items_found || 0) - (a.items_found || 0);
+      const va = val(a), vb = val(b);
+      if (typeof va !== "number") return 1;
+      if (typeof vb !== "number") return -1;
+      return state.sort.dir === "asc" ? va - vb : vb - va;
+    });
+    const body = table.createTBody();
+    sorted.forEach((s) => {
+      const tr = body.insertRow();
+      if (s.store === winner.store) tr.className = "best";
+      const name = el("td"); name.append(el("span", s.store));
+      const sub = el("span", s.kind === "delivery" ? s.delivery_note : s.address, "sub");
+      const link = sourceLink(s);
+      if (link) { sub.append(document.createTextNode(" · ")); sub.append(link); }
+      name.append(sub);
+      // Price = the real cost of every item the store has; the row order (and the +%) comes from
+      // the like-for-like comparison on identical products.
+      const fair = typeof s.like_for_like_total_ils === "number";
+      const miss = s.missing_items || [];
+      const priceTd = el("td", fmtMoney(s.total_ils), "num");
+      const count = s.items_total ? `${s.items_found}/${s.items_total} מוצרים` : (miss.length ? `חסרים ${miss.length}` : "");
+      const more = s.substitutes ? ` · ${s.substitutes} תחליפים` : "";
+      if (count || more) priceTd.append(el("span", count + more, "sub"));
+      if (miss.length) priceTd.title = `חסרים: ${miss.join(", ")}`;
+      const distTd = el("td", where(s), "num");
+      if (s.approx_location) distTd.title = "מיקום משוער: הכתובת לא אותרה במפה, המרחק נמדד למרכז היישוב";
+      else if (["street_name", "store_name", "neighbourhood"].includes(s.located_by)) distTd.title = "אותר לפי שם הרחוב / שם החנות / השכונה";
+      tr.append(name, distTd, priceTd);
+    });
+    wrap.append(table);
+    outer.append(wrap);
+    return outer;
+  }
+
+  // Excel downloads (built on the server from this search's result).
+  function exportLink(job, label, params) {
+    const a = el("a", label, "btn small");
+    a.href = `/api/jobs/${encodeURIComponent(job.id)}/export?${params}`;
+    a.setAttribute("download", "");
+    return a;
+  }
+  function exportBar(job) {
+    const bar = el("div", undefined, "hero-actions");
+    bar.append(el("span", "ייצוא לאקסל:", "muted small"),
+      exportLink(job, "השוואת חנויות", "kind=compare"), exportLink(job, "כל המוצרים לפי חנות", "kind=items"));
+    return bar;
+  }
+
+  function itemsSection(items, convenience) {
+    const box = el("div");
+    items.forEach((it, ii) => {
+      const d = el("details", undefined, "item"), s = el("summary");
+      const picks = (it.picks || []).filter((p) => !convenience.has(p.store) || typeof p.line_total_ils === "number");
+      const cheap = picks.filter((p) => typeof p.line_total_ils === "number" && !convenience.has(p.store))
+        .sort((a, b) => a.line_total_ils - b.line_total_ils).slice(0, 1);
+      const brand = (picks.find((p) => p.brand) || {}).brand;
+      s.append(el("strong", `${it.requested}${brand ? ` · ${brand}` : ""}`),
+        el("span", cheap.length ? `${cheap[0].store} · ${fmtMoney(cheap[0].line_total_ils)}` : "לא נמצא", "muted small"));
+      d.append(s);
+      const list = el("div", undefined, "picks");
+      [...picks].sort((a, b) => (a.line_total_ils ?? 1e9) - (b.line_total_ils ?? 1e9)).forEach((p) => {
+        const found = typeof p.line_total_ils === "number";
+        const row = el("div", undefined, `pick${p.cheapest && found ? " cheap" : ""}${found ? "" : " none"}`);
+        row.append(el("span", p.store));
+        const prod = el("span", undefined, "prod");
+        prod.append(el("span", found ? (p.product || "מוצר לא צוין") : "לא נמצא"));
+        if (found && p.substitute) prod.append(el("span", "תחליף", "chip"));
+        if (found) {
+          const detail = [p.size, typeof p.price_ils === "number" ? `${fmtMoney(p.price_ils)}${/ק"ג/.test(p.size || "") ? " לק״ג" : " ליח׳"}` : ""].filter(Boolean).join(" · ");
+          if (detail) prod.append(el("span", detail, "sub"));
+        }
+        row.append(prod, el("span", found ? fmtMoney(p.line_total_ils) : "—", "num"));
+        list.append(row);
+      });
+      const one = el("div", undefined, "hero-actions");
+      if (state.lastJob && state.lastJob.id) one.append(exportLink(state.lastJob, "ייצוא המוצר לאקסל", `kind=items&item=${ii}`));
+      d.append(list, one); box.append(d);
+    });
+    return box;
+  }
+
+  function section(title, contentNodes, open = false) {
+    const d = el("details", undefined, "section"); d.open = open;
+    d.append(el("summary", title), ...contentNodes.filter(Boolean));
+    return d;
+  }
+  function notesList(list) {
+    const ul = el("ul");
+    list.forEach((a) => ul.append(el("li", a)));
+    return ul;
+  }
+  function coverageList(coverage, facts) {
+    const c = coverage && typeof coverage === "object" ? coverage : {};
+    const priced = Array.isArray(c.chains_checked) ? c.chains_checked : [];
+    const skipped = Array.isArray(c.chains_skipped_or_failed) ? c.chains_skipped_or_failed : [];
+    const notCovered = [...new Set([...(c.chains_not_covered || []), ...NOT_COVERED])];
+    const ul = el("ul");
+    if (priced.length) ul.append(el("li", `רשתות בהשוואה: ${priced.join(", ")}`));
+    if (skipped.length) ul.append(el("li", `לא נכללו היום: ${skipped.map((s) => (s.reason ? `${s.chain} (${s.reason})` : s.chain)).join("; ")}`));
+    ul.append(el("li", `רשתות שאינן מפרסמות קובצי מחירים שאפשר לקרוא: ${notCovered.join(", ")}`));
+    ul.append(el("li", c.price_note || SHELF_NOTE));
+    return ul;
+  }
+  // Shops near the address that have no price files we can read (OpenStreetMap data).
+  function unpricedBlock(u) {
+    if (!u || !(u.shops || []).length) return null;
+    const box = el("div");
+    box.append(el("p", `חנויות ברדיוס ${u.radius_km} ק״מ בלי קובצי מחירים (מהמפה):`, "muted small"));
+    const ul = el("ul");
+    u.shops.forEach((x) => ul.append(el("li", `${x.name} · ${x.kind} · ${fmtKm(x.km)}${x.address ? ` · ${x.address}` : ""}`)));
+    box.append(ul, el("p", "© OpenStreetMap contributors (ODbL)", "muted small"));
+    return box;
+  }
+
+  async function copySummary(r, job) {
+    const full = completeStores(r.stores || []).sort((a, b) => a.total_ils - b.total_ils).slice(0, 3);
+    const dates = [...new Set(Object.values(job.price_freshness || {}).map((f) => f.date).filter(Boolean))];
+    const lines = [
+      `🛒 השוואת סל קניות${dates.length ? ` (מחירים ${dates.map(fmtDate).join(", ")})` : ""}`,
+      `הכי זול: ${r.winner.store} – ${fmtMoney(r.winner.total_ils)} (${fmtKm(r.winner.distance_km)})`,
+      ...full.map((s, i) => `${i + 1}. ${s.store} – ${fmtMoney(s.total_ils)}`),
+      "מחירי מדף, בלי מבצעים ומחירי מועדון.",
+    ];
+    const text = lines.join("\n");
+    try { await navigator.clipboard.writeText(text); toast("הסיכום הועתק"); }
+    catch {
+      const ta = el("textarea"); ta.value = text; document.body.append(ta); ta.select();
+      try { document.execCommand("copy"); toast("הסיכום הועתק"); } catch { prompt("העתיקו:", text); }
+      ta.remove();
+    }
+  }
+
+  // ---------- history ----------
+  function requestFromEntry(e) {
+    if (e.request) return e.request;
+    if (e.text) return { mode: "text", text: e.text, address: "", location: { mode: "radius", radius_km: 4, auto_expand: true } };
+    if (e.address) return { mode: "text", text: `אני גר ב${e.address}: ${e.grocery_list || ""}`, address: "", location: { mode: "radius", radius_km: Math.min(Math.max(Number(e.radius) || 4, 2), 25), auto_expand: true } };
+    return null;
+  }
+  function fillForm(req) {
+    setMode(req.mode === "list" ? "list" : "text");
+    $("address").value = req.address || "";
+    if (req.mode === "list") setRows(req.items || []); else { $("request-text").value = req.text || ""; $("text-count").textContent = $("request-text").value.length; }
+    const loc = req.location || {};
+    if (loc.mode === "cities") { setLoc("cities"); loadCities((loc.cities || []).map((c) => c.city)); }
+    else { setLoc("radius"); $("radius").value = loc.radius_km || 4; $("radius-value").textContent = `${$("radius").value} ק״מ`; $("auto-expand").checked = loc.auto_expand !== false; }
+  }
+  const STATUS_TEXT = { running: "בתהליך…", stopped: "נעצר", error: "נכשל", interrupted: "נקטע (השרת נסגר)" };
+  async function loadHistory() {
+    let data;
+    try { ({ data } = await api("/api/history")); } catch { return; }
+    const entries = data.history || [];
+    $("history-section").hidden = !entries.length;
+    $("history").replaceChildren(...entries.map((e) => {
+      const card = el("article", undefined, "card hcard");
+      card.append(el("div", fmtDateTime(e.created_at), "when"));
+      const req = requestFromEntry(e);
+      card.append(el("div", e.location_label || (req && req.address) || "", "where"));
+      if (req && req.mode === "text" && req.text) card.append(el("div", req.text.length > 90 ? `${req.text.slice(0, 90)}…` : req.text, "muted small"));
+      if (req && req.mode === "list") card.append(el("div", (req.items || []).map((i) => i.name).join(", "), "muted small"));
+      const win = el("div", undefined, "win");
+      if (e.winner && e.winner.store) { win.append(el("span", `${e.winner.store} · `)); win.append(el("strong", fmtMoney(e.winner.total_ils))); }
+      else win.append(el("span", STATUS_TEXT[e.status] || (e.status === "done" ? "ללא תוצאה" : ""), "muted"));
+      card.append(win);
+      if ((e.price_dates || []).length) card.append(el("div", `מחירים מ-${e.price_dates.map(fmtDate).join(", ")}`, "when"));
+      const again = el("button", "חפש שוב", "btn small"); again.type = "button";
+      again.disabled = !req;
+      again.onclick = () => { if (!req) return; fillForm(req); window.scrollTo({ top: 0, behavior: "smooth" }); submitSearch(req); };
+      card.append(again);
+      return card;
+    }));
+  }
+
+  // ---------- init ----------
+  setMode("text"); setLoc("radius"); renderStepper(null);
+  loadHistory(); loadLists(); loadSuggestions();
+})();
+</script>
+</body>
+</html>

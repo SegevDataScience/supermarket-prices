@@ -1,0 +1,11 @@
+# SHA-256 of reviewed code (CRLF normalized to LF). app.py checks these at every start.
+# Format: <sha256>  <path relative to this folder>
+256aef252b1c57866ec02baa07844063b40baf9eeef60933ac72d85644df58c9  vendor/il-supermarket-compare/.claude-plugin/plugin.json
+44fe3f1d316221e3631c388c54557d086d4569ded13ed52ea8fa20337ba30095  vendor/il-supermarket-compare/README.md
+72500a4c110987890326e3d6cb39a7985575490fffaf7ad36f8e7065293cd3d9  vendor/il-supermarket-compare/skills/il-supermarket-compare/SKILL.md
+04310721220b751b6a0714cadc1471393ceb2b9cbf87c54ba41e42590386573d  vendor/il-supermarket-compare/skills/il-supermarket-compare/scripts/basket.py
+f1d8febcfc99ab20c04dfbde2145a35b4612ed598b8a38f50408a30f7f6e457d  vendor/il-supermarket-compare/skills/il-supermarket-compare/scripts/chains.py
+a5eaf439a8b6a03fda5c1ecf5ef2c462e7cb2c64d1074941a15eed89e2249667  vendor/il-supermarket-compare/skills/il-supermarket-compare/scripts/find_stores.py
+32b83f9ea07af35fe9c672644588dfcd2d8366e7998003246057c571a8a28d71  vendor/il-supermarket-compare/skills/il-supermarket-compare/scripts/prices.py
+22c3f55464c7ffaab585137d28dbf7edf4690178b43d2782343bb2a6f7b84371  vendor/il-supermarket-compare/skills/il-supermarket-compare/scripts/search.py
+96c6a40b13666aad27a3ddaee408ceb936952af1b7a625ddce9157204b0e45dd  ext/extra_chains.py

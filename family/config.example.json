@@ -1,0 +1,164 @@
+{
+ "lists": [
+  {
+   "title": "הסל הגדול (29 מוצרים)",
+   "address": "רחוב 1, עיר",
+   "radius_km": 4,
+   "items": [
+    {
+     "name": "מלפפונים",
+     "quantity": "10"
+    },
+    {
+     "name": "עגבניות",
+     "quantity": "10"
+    },
+    {
+     "name": "פלפלים",
+     "quantity": "4"
+    },
+    {
+     "name": "בצל יבש",
+     "quantity": ""
+    },
+    {
+     "name": "שום",
+     "quantity": ""
+    },
+    {
+     "name": "חלב",
+     "quantity": ""
+    },
+    {
+     "name": "ביצים",
+     "quantity": ""
+    },
+    {
+     "name": "קוטג'",
+     "quantity": ""
+    },
+    {
+     "name": "גבינה",
+     "quantity": ""
+    },
+    {
+     "name": "חמאה",
+     "quantity": ""
+    },
+    {
+     "name": "פתיתים",
+     "quantity": ""
+    },
+    {
+     "name": "קמח",
+     "quantity": ""
+    },
+    {
+     "name": "אורז",
+     "quantity": ""
+    },
+    {
+     "name": "פסטה",
+     "quantity": ""
+    },
+    {
+     "name": "טונה בשימורים",
+     "quantity": ""
+    },
+    {
+     "name": "שימורי תירס",
+     "quantity": ""
+    },
+    {
+     "name": "קטניות",
+     "quantity": ""
+    },
+    {
+     "name": "רסק עגבניות",
+     "quantity": ""
+    },
+    {
+     "name": "שמן זית",
+     "quantity": ""
+    },
+    {
+     "name": "מלח",
+     "quantity": ""
+    },
+    {
+     "name": "פיתות",
+     "quantity": ""
+    },
+    {
+     "name": "טורטיות",
+     "quantity": ""
+    },
+    {
+     "name": "קפה",
+     "quantity": ""
+    },
+    {
+     "name": "תה",
+     "quantity": ""
+    },
+    {
+     "name": "נייר טואלט",
+     "quantity": ""
+    },
+    {
+     "name": "מגבונים",
+     "quantity": ""
+    },
+    {
+     "name": "נייר סופג",
+     "quantity": ""
+    },
+    {
+     "name": "סבון כלים",
+     "quantity": ""
+    },
+    {
+     "name": "נוזל כביסה",
+     "quantity": ""
+    }
+   ]
+  },
+  {
+   "title": "קניות שבועיות",
+   "address": "רחוב 1, עיר",
+   "radius_km": 4,
+   "items": [
+    {
+     "name": "מלפפונים",
+     "quantity": "1",
+     "unit": "ק\"ג"
+    },
+    {
+     "name": "עגבניות",
+     "quantity": "1",
+     "unit": "ק\"ג"
+    },
+    {
+     "name": "חזה עוף",
+     "quantity": "1.5",
+     "unit": "ק\"ג"
+    },
+    {
+     "name": "גבינה צהובה",
+     "quantity": "",
+     "unit": "יח'"
+    },
+    {
+     "name": "ביצים",
+     "quantity": "12",
+     "unit": "יח'"
+    },
+    {
+     "name": "פיתות כוסמין",
+     "quantity": "",
+     "unit": "יח'"
+    }
+   ]
+  }
+ ]
+}
