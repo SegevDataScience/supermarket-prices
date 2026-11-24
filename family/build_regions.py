@@ -258,16 +258,24 @@ def clean_price_files(folder):
 JS_NAFOT = range(71, 78)  # Judea and Samaria sub-districts
 
 
-def west_of_green_line(lo):
-    return lo < 34.93  # no Judea-and-Samaria locality lies this far west (Alfei Menashe/Oranit are ~34.98)
+def west_of_green_line(lo, la=32.0):
+    # no Judea-and-Samaria locality lies this far west (Alfei Menashe/Oranit ~34.98; in the south Hebron
+    # hills the line bends west: סנסנה/אשכולות ~34.9)
+    return lo < (34.85 if la < 31.55 else 34.93)
 
 
-def district_ok(display, nafa_name):
-    """The map's answer names its district ("..., נפת תל אביב, מחוז תל אביב, ישראל"): it must not be another
-    district than the one data.gov gives for that locality (אפרת: data.gov בית לחם, map hit נפת תל אביב)."""
-    named = [app._loose(n) for n in re.findall(r"נפת ([^,]+)", display or "")]
-    want = app._loose(nafa_name)
-    return not named or not want or any(n[:3] == want[:3] for n in named)
+DISTRICTS = {1: "ירושלים", 2: "הצפון", 3: "חיפה", 4: "המרכז", 5: "תל אביב", 6: "הדרום"}  # first digit of סמל_נפה
+
+
+def district_ok(display, nafa_code):
+    """The map's answer names its district ("..., מחוז תל אביב, ישראל"); it must be the locality's official
+    district (אפרת came back in מחוז תל אביב, אחווה of the south in Beit She'an). District, not sub-district:
+    the sub-district names differ between data.gov and the map (עפולה / יזרעאל)."""
+    named = [app._loose(n) for n in re.findall(r"מחוז ([^,]+)", display or "")]
+    if nafa_code // 10 == 7:  # Judea and Samaria: no Israeli district in a right answer
+        return not named
+    want = DISTRICTS.get(nafa_code // 10)
+    return not named or not want or any(app._loose(want) in n for n in named)
 
 
 def place_centre(p):
@@ -276,12 +284,15 @@ def place_centre(p):
     name, nafa = " ".join(str(p["שם_ישוב"]).split()), str(p.get("שם_נפה") or "").strip()
     english = " ".join(str(p.get("שם_ישוב_לועזי") or "").split()).title()
     js = p["סמל_נפה"] in JS_NAFOT
-    for q in [name] + ([english] if english else []):
+    if "(שבט)" in name:
+        return None  # a Bedouin tribe registration, not a place with shops
+    plain = re.sub(r"\s*\(.*?\)", "", name).strip()  # "בן שמן (מושב)" -> "בן שמן"
+    for q in dict.fromkeys([name] + ([english] if english else []) + ([plain] if plain != name else [])):
         if js:  # OpenStreetMap files Judea and Samaria under "ps": with "il" only, a same-named street in Israel comes back
             hit = app._nominatim(f"settlement-ilps:{q}", {"q": q, "featureType": "settlement", "countrycodes": "il,ps"}, with_name=True)
         else:
             hit = app._nominatim(f"settlement:{q}", {"q": q, "featureType": "settlement"}, with_name=True)
-        if hit and district_ok(hit[2], nafa) and not (p["סמל_נפה"] in JS_NAFOT and west_of_green_line(hit[1])):
+        if hit and district_ok(hit[2], p["סמל_נפה"]) and not (p["סמל_נפה"] in JS_NAFOT and west_of_green_line(hit[1], hit[0])):
             return hit[:2]
     return None
 
@@ -289,7 +300,7 @@ def place_centre(p):
 def misplaced_places(places, raw_by_code):
     """Certain errors only: a Judea-and-Samaria locality placed west of the Green Line."""
     return {pl["n"] for pl in places if pl.get("c") and pl["c"] in raw_by_code
-            and raw_by_code[pl["c"]]["סמל_נפה"] in JS_NAFOT and west_of_green_line(pl["lo"])}
+            and raw_by_code[pl["c"]]["סמל_נפה"] in JS_NAFOT and west_of_green_line(pl["lo"], pl["la"])}
 
 
 def hide_suspicious_places(folder):
@@ -305,7 +316,7 @@ def hide_suspicious_places(folder):
     loose_bad = {app._loose(n) for n in bad}
     for st in doc["stores"]:
         town = st.get("addr", "").rsplit(",", 1)[-1].strip()
-        if st.get("la") is not None and app._loose(town) in loose_bad and west_of_green_line(st["lo"]):
+        if st.get("la") is not None and app._loose(town) in loose_bad and west_of_green_line(st["lo"], st["la"]):
             st["la"] = st["lo"] = None  # not shown in any radius (indices of data/s/<i>.json stay)
     (folder / "stores.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     return sorted(bad)
