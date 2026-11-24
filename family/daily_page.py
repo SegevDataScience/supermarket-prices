@@ -129,12 +129,45 @@ SEARCH_JS = r'''<script>
   // ---------- matching (same rules as before) ----------
   const wordOk = (q, w) => (q.length <= 3 ? w === q || w === q + "ימ" || w === q + "ות" : w.startsWith(q.slice(0, Math.min(q.length, 4))));
   const size = (name) => { const m = N(name).match(SIZE); return m ? m[1] + m[2][0] : null; };
+  // ---------- understanding messy text ----------
+  let VOCAB = null, PREF4 = null;
+  function vocab() {
+    if (VOCAB) return;
+    VOCAB = new Set(); PREF4 = new Set();
+    WORDS.forEach((ws) => ws.forEach((w) => { if (w.length > 1) { VOCAB.add(w); if (w.length >= 4) PREF4.add(w.slice(0, 4)); } }));
+  }
+  const known = (w) => (w.length <= 3 ? VOCAB.has(w) || VOCAB.has(w + "ימ") || VOCAB.has(w + "ות") : PREF4.has(w.slice(0, 4)));
+  const STOP = new Set(["של", "עם", "בלי", "גם", "את", "או", "וגם", "קצת", "הרבה", "כמה", "יחידה", "יחידות", "חבילה", "חבילות", "אריזה", "בקבוק"]);
+  // "האורז" -> "אורז", "ולחם" -> "לחם", "אורזז" -> "אורז"; null when nothing like it is sold anywhere
+  function fixWord(w) {
+    if (STOP.has(w)) return "";
+    // "וחלב" / "החלב" -> "חלב": the conjunction ו and the article ה come first, even if "וחלב" appears in some name
+    if (/^[וה]/.test(w) && w.length >= 3) { const r = w.slice(1); if (VOCAB.has(r) || (r.length >= 4 && known(r))) return r; }
+    if (/^(וה|ול|וב|ומ|וש)/.test(w) && w.length >= 4) { const r = w.slice(2); if (VOCAB.has(r) || (r.length >= 4 && known(r))) return r; }
+    if (VOCAB.has(w)) return w;  // the word exactly as sold ("מלח")
+    for (let k = 1; k <= 2 && k < w.length - 1; k++) {  // "האורז" -> "אורז" even if some product word starts with "האור"
+      if (!/^[והבלמכש]+$/.test(w.slice(0, k))) break;
+      const r = w.slice(k);
+      if (r.length >= 2 && (VOCAB.has(r) || (r.length >= 3 && known(r)))) return r;
+    }
+    if (known(w)) return w;
+    if (w.length >= 4) {
+      for (let i = 0; i < w.length; i++) { const r = w.slice(0, i) + w.slice(i + 1); if (known(r)) return r; }   // one extra letter
+      for (let i = 0; i < w.length - 1; i++) { const r = w.slice(0, i) + w[i + 1] + w[i] + w.slice(i + 2); if (known(r)) return r; } // swapped letters
+    }
+    return null;
+  }
+
   function parseLine(line) {
     let t = line.trim(), qty = null, kg = /ק"?ג|קילו/.test(t);
     let m = t.match(/^(\d+(?:\.\d+)?)\s+(.+)$/) || t.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(?:ק"?ג|קילו|יח'?|יחידות)?$/);
     if (m) { const a = parseFloat(m[1]); if (!isNaN(a)) { qty = a; t = m[2]; } else { qty = parseFloat(m[2]); t = m[1]; } }
     t = t.replace(/ק"?ג|קילו|יחידות|יח'?/g, " ").trim();
-    return { text: line.trim(), q: N(t).split(" ").filter((w) => w.length > 1), qty, kg };
+    const raw = N(t).split(" ").filter((w) => w.length > 1);
+    const fixed = raw.map(fixWord);
+    const q = fixed.filter((w) => w);  // "" = filler word, null = not understood
+    const bad = !q.length || fixed.filter((w) => w === null).length > q.length;
+    return { text: line.trim(), q: bad ? [] : q, qty, kg, bad };
   }
   function solve(item, refOverride) {
     const p = PRODUCTS, s = DATA.s;
@@ -211,7 +244,9 @@ SEARCH_JS = r'''<script>
       <p class=muted style="font-size:.8rem">ההתאמה לפי שם המוצר והברקוד (מוצרים שחופשו באפליקציה - בדיוק כמו באפליקציה); "תחליף" = החנות לא מוכרת את אותו מוצר. ירקות בלי ק"ג נספרים כ-150 גרם ליחידה. מרחקים בקו אוויר.</p>`;
     $("out").querySelectorAll("select[data-i]").forEach((sel) => sel.addEventListener("change", () => {
       const cur = {}; $("out").querySelectorAll("select[data-i]").forEach((x) => { cur[+x.dataset.i] = +x.value; });
+      const box = $("out").querySelector(".notice"); const keep = box ? box.outerHTML : "";
       render(items.map((it, i) => ({ ...it, r: solve(it, cur[i]) })), home);
+      if (keep) $("out").insertAdjacentHTML("afterbegin", keep);
     }));
   }
 
@@ -232,7 +267,12 @@ SEARCH_JS = r'''<script>
       .sort((a, b) => (a.kind === "delivery") - (b.kind === "delivery") || a.km - b.km).slice(0, 32);
     const rows = await Promise.all(chosen.map(async (st) => { if (!fileCache.has(st.i)) fileCache.set(st.i, await get(`data/s/${st.i}.json`)); return fileCache.get(st.i); }));
     DATA = { stores: chosen, s: rows };
-    render(lines.map(parseLine).map((it) => ({ ...it, r: solve(it) })), home);
+    vocab();
+    const parsed = lines.map(parseLine), wrong = parsed.filter((it) => it.bad), good = parsed.filter((it) => !it.bad);
+    const wrongBox = wrong.length ? `<div class=notice>המלל שגוי: ${wrong.map((it) => `"${esc(it.text)}"`).join(", ")} - לא זוהה מוצר כזה. בדקו את הכתיב ונסו שוב.</div>` : "";
+    if (!good.length) { $("out").innerHTML = wrongBox; return; }
+    render(good.map((it) => ({ ...it, r: solve(it) })), home);
+    if (wrongBox) $("out").insertAdjacentHTML("afterbegin", wrongBox);
   }
 
   $("go").addEventListener("click", async () => {
@@ -398,9 +438,7 @@ footer{{color:var(--muted);font-size:.8rem;margin:22px 4px;text-align:center}}
   <div class=downloads><button id=go class="btn primary" type=button>השווה מחירים</button><button id=clear class=btn type=button>נקה</button></div>
   <div id=out></div>
 </section>
-<h2 class=section-title>📋 הרשימות השמורות</h2>
-{f'<nav class=tabs>{"".join(tabs)}</nav>' if len(tabs) > 1 else ""}
-{"".join(sections)}
+{("<h2 class=section-title>📋 הרשימות השמורות</h2>" + (f'<nav class=tabs>{"".join(tabs)}</nav>' if len(tabs) > 1 else "") + "".join(sections)) if sections else ""}
 <footer>מתעדכן אוטומטית כל 3 ימים. הסל הכי זול = הסכום הנמוך ביותר לכל המוצרים יחד, מבין החנויות שיש בהן הכי הרבה מהמוצרים (כולל תחליפים).</footer>
 </main>
 """ + SEARCH_JS + """
@@ -458,9 +496,13 @@ def build_prices(jobs):
 
 
 def main():
-    cfg = load_config()
+    # The family page always opens blank: no one's saved lists or searches are on it. The saved lists
+    # (family/config.json) are computed only with --with-lists, for the owner's own use.
+    cfg = load_config() if "--with-lists" in sys.argv else {"lists": []}
     seed_decisions()
     SITE.mkdir(parents=True, exist_ok=True)
+    for old in SITE.glob("list*.xlsx"):
+        old.unlink()
     jobs, titles = [], []
     for n, entry in enumerate(cfg["lists"], start=1):
         print(f"== {entry.get('title', n)}", flush=True)
