@@ -1,5 +1,5 @@
 {
- "note": "Areas covered by the family page's free search. center = official locality name (data.gov.il); radius in km. Localities and branches within the radius are included.",
+ "note": "Free-search coverage. national=true: every locality and branch in the country (regions are then only a fallback list). areas = extra entries in the locality list, searched from their centre.",
  "regions": [
   {
    "name": "ירושלים",
@@ -75,6 +75,37 @@
    "name": "נתניה",
    "center": "נתניה",
    "radius": 6
+  }
+ ],
+ "national": true,
+ "areas": [
+  {
+   "name": "הרי ירושלים (אזור)",
+   "center": "צובה"
+  },
+  {
+   "name": "עמק האלה (אזור)",
+   "center": "גבעת ישעיהו"
+  },
+  {
+   "name": "גוש דן (אזור)",
+   "center": "רמת גן"
+  },
+  {
+   "name": "השרון (אזור)",
+   "center": "כפר סבא"
+  },
+  {
+   "name": "השפלה (אזור)",
+   "center": "רחובות"
+  },
+  {
+   "name": "הגליל העליון (אזור)",
+   "center": "ראש פינה"
+  },
+  {
+   "name": "הנגב (אזור)",
+   "center": "באר שבע"
   }
  ]
 }

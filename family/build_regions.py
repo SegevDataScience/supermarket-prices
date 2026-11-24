@@ -75,13 +75,14 @@ def main():
         rg["xy"] = app.settlement_centre(rg["center"])
         if not rg["xy"]:
             raise SystemExit(f"cannot locate area centre {rg['center']}")
-    near = lambda xy, extra=0.0: xy and any(app._km(xy, rg["xy"]) <= rg["radius"] + extra for rg in regions)
+    national = bool(cfg.get("national"))  # every locality and every branch in the country
+    near = (lambda xy, extra=0.0: bool(xy)) if national else         (lambda xy, extra=0.0: xy and any(app._km(xy, rg["xy"]) <= rg["radius"] + extra for rg in regions))
 
     # ---- localities (closed list): those of the areas' sub-districts, located once, within an area ----
     places_all = cached("places", lambda: datagov(PLACES_RES), days=60)
     name_of = lambda p: p["שם_ישוב"].strip()
     centres = {name_of(p): p for p in places_all}
-    nafot = {centres[rg["center"]]["סמל_נפה"] for rg in regions if rg["center"] in centres}
+    nafot = {p["סמל_נפה"] for p in places_all} if national else         {centres[rg["center"]]["סמל_נפה"] for rg in regions if rg["center"] in centres}
     places = []
     cand = [p for p in places_all if p["סמל_נפה"] in nafot]
     log(f"localities to check: {len(cand)} (sub-districts {sorted(nafot)})")
@@ -89,6 +90,11 @@ def main():
         xy = app.settlement_centre(name_of(p))
         if near(xy):
             places.append({"n": name_of(p), "c": int(p["סמל_ישוב"]), "la": round(xy[0], 5), "lo": round(xy[1], 5)})
+    # areas (no streets): "הרי ירושלים (אזור)" etc. - searched from the area's centre
+    for area in cfg.get("areas", []):
+        xy = app.settlement_centre(area["center"])
+        if xy:
+            places.append({"n": area["name"], "c": 0, "la": round(xy[0], 5), "lo": round(xy[1], 5)})
     places.sort(key=lambda x: x["n"])
     log(f"localities in the areas: {len(places)}")
 

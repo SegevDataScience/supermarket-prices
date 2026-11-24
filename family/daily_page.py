@@ -97,24 +97,50 @@ SEARCH_JS = r'''<script>
   const fileCache = new Map();
   let DATA = null;
 
-  // ---------- address ----------
+  // ---------- address: our own type-to-search lists (the browser's <datalist> doesn't work on most phones) ----------
+  const L = (s) => N(s).replace(/ /g, "");  // loose: "ניל"י" = "נילי", "תל-אביב" = "תל אביב"
+  function autocomplete(input, listEl, items, onPick) {
+    const show = () => {
+      const q = L(input.value);
+      const all = items();
+      if (!all.length) { listEl.hidden = true; return; }
+      const hits = q ? all.filter((x) => L(x).includes(q)).sort((a, b) => (L(b).startsWith(q) - L(a).startsWith(q)) || a.length - b.length) : all;
+      listEl.innerHTML = hits.slice(0, 40).map((x) => `<button type=button class=ac-item>${esc(x)}</button>`).join("")
+        || `<div class=ac-none>לא נמצא ברשימה</div>`;
+      listEl.hidden = false;
+    };
+    input.addEventListener("input", show);
+    input.addEventListener("focus", show);
+    listEl.addEventListener("pointerdown", (e) => e.preventDefault());  // keep focus while tapping
+    listEl.addEventListener("click", (e) => {
+      const b = e.target.closest(".ac-item"); if (!b) return;
+      input.value = b.textContent; listEl.hidden = true; input.blur(); onPick(b.textContent);
+    });
+    input.addEventListener("blur", () => setTimeout(() => { listEl.hidden = true; }, 150));
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const first = listEl.querySelector(".ac-item"); if (first) { e.preventDefault(); first.click(); }
+    });
+  }
   async function init() {
     try {
       PLACES = await get("data/places.json");
-      $("cities").innerHTML = PLACES.map((p) => `<option value="${esc(p.n)}">`).join("");
+      autocomplete($("city"), $("city-list"), () => PLACES.map((p) => p.n), () => cityPicked());
+      autocomplete($("street"), $("street-list"), () => STREETS, () => {});
       const meta = await get("data/stores.json");
       STORES = meta.stores;
       $("datapill").textContent = `${PLACES.length} יישובים · ${STORES.filter((s) => s.kind !== "delivery").length} סניפים · מחירים מ-${meta.date.split("-").reverse().join(".")}`;
     } catch (e) { $("datapill").textContent = "לא נטענו נתוני המחירים"; }
   }
-  const place = () => PLACES.find((p) => p.n === $("city").value.trim());
-  $("city").addEventListener("change", async () => {
+  const place = () => { const v = L($("city").value); return v ? PLACES.find((p) => L(p.n) === v) : null; };
+  async function cityPicked() {
     const p = place();
-    $("street").value = ""; $("streets").innerHTML = ""; STREETS = [];
-    $("street").disabled = !p; $("street").placeholder = p ? "רחוב (לא חובה)" : "בחרו יישוב קודם";
-    if (!p) return;
-    try { STREETS = await get(`data/streets/${p.c}.json`); $("streets").innerHTML = STREETS.map((s) => `<option value="${esc(s)}">`).join(""); } catch {}
-  });
+    $("street").value = ""; STREETS = [];
+    $("street").disabled = !p || !p.c; $("street").placeholder = !p ? "בחרו יישוב קודם" : (p.c ? "רחוב (לא חובה)" : "אזור - בלי רחוב");
+    if (!p || !p.c) return;
+    try { STREETS = await get(`data/streets/${p.c}.json`); } catch {}
+  }
+  $("city").addEventListener("change", cityPicked);
   async function homePoint(p) {
     const st = $("street").value.trim(), num = $("num").value.trim();
     if (!st) return { xy: [p.la, p.lo], label: p.n };
@@ -253,7 +279,7 @@ SEARCH_JS = r'''<script>
   async function search() {
     const p = place();
     if (!p) { $("out").innerHTML = `<div class=notice>בחרו יישוב מהרשימה.</div>`; $("city").focus(); return; }
-    if ($("street").value.trim() && !STREETS.includes($("street").value.trim())) { $("out").innerHTML = `<div class=notice>בחרו רחוב מהרשימה (או השאירו ריק).</div>`; return; }
+    if ($("street").value.trim() && !STREETS.some((x) => L(x) === L($("street").value))) { $("out").innerHTML = `<div class=notice>בחרו רחוב מהרשימה (או השאירו ריק).</div>`; return; }
     const lines = $("q").value.split(/\n|,/).map((l) => l.trim()).filter(Boolean);
     if (!lines.length) { $("out").innerHTML = `<div class=notice>כתבו לפחות מוצר אחד.</div>`; return; }
     const home = await homePoint(p), radius = +$("rad").value;
@@ -416,7 +442,11 @@ textarea:focus{{outline:2px solid var(--accent);outline-offset:1px}}
 .section-title{{font-size:1.1rem;margin:26px 4px 0}}
 .addr{{display:grid;grid-template-columns:2fr 2fr 1fr 1fr;gap:8px;margin-top:10px}} .addr label{{font-size:.8rem;color:var(--muted);display:grid;gap:4px}}
 .addr input,.addr select{{font:inherit;font-size:.95rem;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%}}
-.addr input:disabled{{opacity:.55}} @media (max-width:560px){{.addr{{grid-template-columns:1fr 1fr}}}}
+.addr input:disabled{{opacity:.55}}
+.ac{{position:relative}} .ac-list{{position:absolute;top:100%;inset-inline:0;z-index:20;max-height:260px;overflow:auto;margin-top:4px;
+  background:var(--card);border:1px solid var(--accent);border-radius:12px;box-shadow:var(--shadow)}}
+.ac-item{{display:block;width:100%;text-align:right;font:inherit;font-size:.95rem;color:var(--text);background:none;border:0;border-bottom:1px solid var(--line);padding:11px 12px;cursor:pointer}}
+.ac-item:hover,.ac-item:focus{{background:var(--card2)}} .ac-none{{padding:11px 12px;color:var(--muted);font-size:.9rem}} @media (max-width:560px){{.addr{{grid-template-columns:1fr 1fr}}}}
 .refsel{{display:block;font-size:.8rem;color:var(--muted);margin:4px 0}} .refsel select{{max-width:100%;font:inherit;font-size:.82rem;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:2px 6px}}
 .pline.cheap b{{color:var(--good)}} #out{{margin-top:6px}}
 footer{{color:var(--muted);font-size:.8rem;margin:22px 4px;text-align:center}}
@@ -427,12 +457,11 @@ footer{{color:var(--muted);font-size:.8rem;margin:22px 4px;text-align:center}}
 <section class=list id=search>
   <div class=list-head><h2>🔎 חיפוש חופשי</h2><span class=pill id=datapill>טוען נתונים…</span></div>
   <div class=addr>
-    <label>עיר / יישוב<input id=city list=cities autocomplete=off placeholder="התחילו להקליד ובחרו"></label>
-    <label>רחוב<input id=street list=streets autocomplete=off disabled placeholder="בחרו יישוב קודם"></label>
+    <label class=ac>עיר / יישוב / אזור<input id=city autocomplete=off autocorrect=off spellcheck=false placeholder="התחילו להקליד ובחרו"><div id=city-list class=ac-list hidden></div></label>
+    <label class=ac>רחוב<input id=street autocomplete=off autocorrect=off spellcheck=false disabled placeholder="בחרו יישוב קודם"><div id=street-list class=ac-list hidden></div></label>
     <label>מספר<input id=num inputmode=numeric maxlength=5 placeholder="לא חובה"></label>
     <label>רדיוס<select id=rad><option value=2>2 ק"מ</option><option value=3>3 ק"מ</option><option value=4 selected>4 ק"מ</option><option value=6>6 ק"מ</option><option value=8>8 ק"מ</option><option value=12>12 ק"מ</option></select></label>
   </div>
-  <datalist id=cities></datalist><datalist id=streets></datalist>
   <p class=muted style="margin:10px 0 6px;font-size:.88rem">מה קונים? מוצר בכל שורה, אפשר עם כמות ("10 מלפפונים", "חלב 2").</p>
   <textarea id=q rows=5 placeholder="למשל:&#10;חלב 3%&#10;10 מלפפונים&#10;במבה&#10;קפה טורקי"></textarea>
   <div class=downloads><button id=go class="btn primary" type=button>השווה מחירים</button><button id=clear class=btn type=button>נקה</button></div>
