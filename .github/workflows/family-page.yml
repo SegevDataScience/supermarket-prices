@@ -1,6 +1,6 @@
 # Family page (GitHub Pages).
-# Normally the home PC builds the FULL page every morning (all chains answer from Israel) and pushes it
-# to published/; this workflow then publishes it as is. If no page from today arrived by 09:00, it
+# Normally the home PC builds the FULL page every 3 days (all chains answer from Israel) and pushes it
+# to published/; this workflow then publishes it as is. If the PC's page is 3+ days old, it
 # builds a PARTIAL page here (several chains' price sites don't answer servers outside Israel) with a
 # clear notice. The lists and the home address come from the secret FAMILY_CONFIG; the page shows no address.
 name: Family page
@@ -38,16 +38,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use the PC's full page if it is from today
+      - name: Use the PC's full page if it is less than 3 days old
         id: pc
         run: |
-          if [ -f published/stamp.json ] && python3 -c "import json,datetime,sys; d=json.load(open('published/stamp.json')); sys.exit(0 if d.get('date')==datetime.date.today().isoformat() else 1)"; then
+          if [ -f published/stamp.json ] && python3 -c "import json,datetime,sys; d=json.load(open('published/stamp.json')); age=(datetime.date.today()-datetime.date.fromisoformat(d.get('date','2000-01-01'))).days; sys.exit(0 if age < 3 else 1)"; then
             mkdir -p site && cp -r published/. site/ && rm -f site/stamp.json
             echo "fresh=1" >> "$GITHUB_OUTPUT"
-            echo "Publishing the full page built on the PC today."
+            echo "Publishing the full page built on the PC (less than 3 days old)."
           else
             echo "fresh=0" >> "$GITHUB_OUTPUT"
-            echo "No page from the PC today: building a partial page here."
+            echo "The PC's page is 3+ days old: building a partial page here."
           fi
 
       - if: steps.pc.outputs.fresh != '1'
