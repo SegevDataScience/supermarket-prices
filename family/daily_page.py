@@ -86,18 +86,21 @@ SEARCH_JS = r'''<script>
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const N = (s) => String(s || "").toLowerCase().replace(/["'״׳`.,()\-*\/+%!?:;]/g, " ")
     .replace(/ך/g, "כ").replace(/ם/g, "מ").replace(/ן/g, "נ").replace(/ף/g, "פ").replace(/ץ/g, "צ").replace(/\s+/g, " ").trim();
-  const OTHER = /חתול|כלב|לחיות|פנסי ?פיסט|פריסקיז|ויסקס|פדיגרי|בטעמ|חטי[פף]|ממרח|צ ?יפס|פופקו|פריכ|ספרינג|משקה|מגבונ|לילד|לתינוק|תינוק|במלח|בחומצ|כבוש|חמוצ|שימור|קפוא|מיובש|מוחמצ/;
+  const OTHER = /חתול|כלב|לחיות|פנסי ?פיסט|פריסקיז|ויסקס|פדיגרי|בטעמ|ממרח|צ ?יפס|פופקו|פריכ|ספרינג|משקה|מגבונ|לילד|לתינוק|תינוק|במלח|בחומצ|כבוש|חמוצ|שימור|קפוא|מיובש|מוחמצ|במילוי|ממולא|רביעי|שישי|שלישי|מארז|זוג(?![א-ת])/;
+  const UNITW = /^(גרמ|גר|ג|ליטר|ל|מל|מ"ל|יח|יחידות|קג|קילו|גרמים)$/;
   const SIZE = /(\d+(?:\.\d+)?)\s*(ק"?ג|קג|קילו|גרמ|גר|ג|ליטר|ל|מ"?ל|מל|יח)(?![א-ת])/;
-  let DATA = null, words = null;
+  let DATA = null, words = null, REFS = new Map();
 
   async function load() {
     if (DATA) return DATA;
     const res = await fetch("prices.json", { cache: "no-cache" });
     DATA = await res.json();
     words = DATA.p.map((p) => N(p[1]).split(" "));
+    Object.entries(DATA.refs || {}).forEach(([k, v]) => REFS.set(N(k).split(" ").filter((w) => w.length > 1).join(" "), v));
     return DATA;
   }
-  const wordOk = (q, w) => (q.length <= 3 ? w === q || (w.startsWith(q) && w.length <= q.length + 1) : w.startsWith(q.slice(0, Math.min(q.length, 4))));
+  // short words match exactly or with a plural ending ("חלב" is not "חלבה"); longer words by their first 4 letters
+  const wordOk = (q, w) => (q.length <= 3 ? w === q || w === q + "ימ" || w === q + "ות" : w.startsWith(q.slice(0, Math.min(q.length, 4))));
   const matches = (qw, pi) => qw.every((q) => words[pi].some((w) => wordOk(q, w)));
   const size = (name) => { const m = N(name).match(SIZE); return m ? m[1] + m[2][0] : null; };
 
@@ -113,7 +116,8 @@ SEARCH_JS = r'''<script>
     const { p, s } = DATA;
     const cand = [];
     for (let pi = 0; pi < p.length; pi++) if (matches(item.q, pi)) cand.push(pi);
-    const otherOk = (pi) => !OTHER.test(N(p[pi][1])) || item.q.some((q) => OTHER.test(q));
+    const multi = /\d\s*[*xX×]\s*\d/;
+    const otherOk = (pi) => (!OTHER.test(N(p[pi][1])) || item.q.some((q) => OTHER.test(q))) && (!multi.test(p[pi][1]) || multi.test(item.text));
     const pool = cand.filter(otherOk);
     if (!pool.length) return { cands: [], ref: null, picks: [] };
     const where = new Map(); // product -> [[store, price]]
@@ -124,14 +128,20 @@ SEARCH_JS = r'''<script>
       const ws = words[pi], cov = where.get(pi).length;
       const prices = where.get(pi).map((x) => x[1]).sort((a, b) => a - b);
       const head = (ws[0] && wordOk(first, ws[0])) ? 1 : 0;
-      // fresh produce sold by weight ("מלפפון" per kg) beats a jar with a barcode sold everywhere
-      return [head && p[pi][2] === 1 ? 2 : head, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
+      const extra = ws.filter((w) => w.length > 1 && !/^\d/.test(w) && !UNITW.test(w) && !item.q.some((q) => wordOk(q, w))).length;
+      // fresh produce by weight ("מלפפון" per kg) beats a jar sold everywhere; then the product sold in the
+      // most stores (a fair comparison), the plainest name (fewest extra words), the typical (median) price
+      return [head && p[pi][2] === 1 ? 2 : head, cov >= maxCov - 1 ? 1 : 0, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
     };
+    const maxCov = Math.max(...pool.map((pi) => where.get(pi).length));
     const ranked = pool.filter((pi) => where.get(pi).length).sort((a, b) => {
       const A = score(a), B = score(b);
-      return B[0] - A[0] || B[1] - A[1] || B[2] - A[2];
+      for (let k = 0; k < A.length; k++) if (B[k] !== A[k]) return B[k] - A[k];
+      return 0;
     });
-    const ref = refOverride ?? ranked[0];
+    const known = REFS.get(item.q.join(" "));
+    const ref = refOverride ?? (known !== undefined && where.has(known) ? known : (known !== undefined ? (where.set(known, []), s.forEach((rows, si) => rows.forEach(([pi, price]) => { if (pi === known) where.get(known).push([si, price]); })), known) : ranked[0]));
+    if (known !== undefined && !ranked.includes(known)) ranked.unshift(known);
     const refSize = size(p[ref][1]), weighted = p[ref][2] === 1;
     const refWords = new Set(words[ref]);
     let units = item.qty ?? 1;
@@ -369,7 +379,7 @@ def build_prices(jobs):
             if ref and ref not in seen:
                 seen.add(ref)
                 stores.append((ref, st, fresh.get(ref, {})))
-    products, index, per_store, meta = [], {}, [], []
+    products, index, per_store, meta, names = [], {}, [], [], []
     for ref, st, f in stores:
         chain, sid = ref.split(":")
         tsv = app.CACHE_DIR / f"{chain}-{sid}-{today}.tsv"
@@ -382,13 +392,29 @@ def build_prices(jobs):
             if key not in index:
                 index[key] = len(products)
                 products.append([key, r[1].strip(), 1 if r[5] == "1" else 0])
-            elif len(r[1]) > len(products[index[key]][1]):
-                products[index[key]][1] = r[1].strip()  # keep the most descriptive name
+                names.append([])
+            names[index[key]].append(r[1].strip())
             rows.append([index[key], round(r[2], 2)])
         per_store.append(rows)
         meta.append({"name": st["store"], "kind": st.get("kind", "store"), "km": st.get("distance_km") or 0,
                      "approx": bool(st.get("approx_location")), "date": f.get("date")})
-    return {"date": datetime.now().strftime("%Y-%m-%d"), "stores": meta, "p": products, "s": per_store}
+    # One display name per product: the chains name the same barcode differently ("במבה 80 גרם אסם" /
+    # "חטיף במבה קלאסית"); use the first word most chains agree on, then the most detailed such name.
+    from collections import Counter
+    for i, ns in enumerate(names):
+        heads = Counter(n.split()[0] for n in ns if n.split())
+        if heads:
+            top = heads.most_common(1)[0][0]
+            products[i][1] = max((n for n in ns if n.split() and n.split()[0] == top), key=len)
+    # The app's reference products (decided on the PC, same barcode in every store): an item typed on the
+    # page that was ever searched in the app gets exactly the same product.
+    refs = {}
+    raw = app._read_json(app.WORK_DIR / "ref_products.json", {})
+    for k, v in raw.items():
+        name = k.split("|")[0].strip()
+        if isinstance(v, dict) and v.get("code") and v["code"] in index and name not in refs:
+            refs[name] = index[v["code"]]
+    return {"date": datetime.now().strftime("%Y-%m-%d"), "stores": meta, "p": products, "s": per_store, "refs": refs}
 
 
 def main():
