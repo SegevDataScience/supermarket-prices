@@ -45,6 +45,8 @@ JOB_TIMEOUT_SECONDS = 60 * 60
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+SITE_DIR = BASE_DIR / "site"  # the family page, exactly as published on GitHub Pages (family/daily_page.py)
+SITE_TYPES = {".html": "text/html; charset=utf-8", ".json": "application/json; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
 WORK_DIR = BASE_DIR / ".il-supermarket-work"
 # Shared with the plugin when it's used directly in Claude Code (its default cache).
 CACHE_DIR = Path(
@@ -2846,8 +2848,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path, _, query = self.path.partition("?")
-        if path in ("/", "/index.html"):
-            self._serve_index()
+        if path in ("/advanced", "/advanced/"):
+            self._serve_index()  # the full local tool (live check, Excel)
+            return
+        if path in ("/", "/index.html") or path == "/stamp.json" or path.startswith("/data/"):
+            self._serve_site(unquote(path))
             return
         if path.startswith("/api/") and not self._local_origin_only():
             return
@@ -2908,6 +2913,29 @@ class Handler(BaseHTTPRequestHandler):
             job["idle_warning_seconds"] = IDLE_WARNING_SECONDS
         job["server_id"] = SERVER_ID
         self._send_json(200, job)
+
+    def _serve_site(self, path):
+        """Same files as the GitHub page: site/index.html and site/data/*. Falls back to the local
+        tool until the page has been built once."""
+        rel = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
+        target = (SITE_DIR / rel).resolve()
+        if not target.is_relative_to(SITE_DIR.resolve()) or target.suffix not in SITE_TYPES or not target.is_file():
+            if rel == "index.html":
+                self._serve_index()
+            else:
+                self._send_json(404, {"error": "לא נמצא."})
+            return
+        try:
+            body = target.read_bytes()
+        except OSError:
+            self._send_json(503, {"error": "הנתונים מתעדכנים כרגע, נסו שוב בעוד רגע."})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", SITE_TYPES[target.suffix])
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store" if target.suffix == ".html" else "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_index(self):
         try:

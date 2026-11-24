@@ -10,6 +10,8 @@ Writes site/data/:
 Run on the PC (all chains answer from Israel): python family/build_regions.py
 """
 import json
+import time
+import shutil
 import os
 import subprocess
 import sys
@@ -31,7 +33,8 @@ sys.path.insert(1, str(app.SCRIPTS_DIR))
 import chains as V  # noqa: E402  vendor
 import find_stores as FS  # noqa: E402  vendor (geocode cache, locate_store, is_supermarket)
 
-OUT = ROOT / "site" / "data"
+LIVE = ROOT / "site" / "data"  # what the local app and the published page read
+OUT = ROOT / "site" / "data.build"  # built here, then swapped in at once: never half-built data on view
 WORK = app.WORK_DIR
 DATAGOV = "https://data.gov.il/api/3/action/datastore_search"
 STREETS_RES = "9ad3862c-8391-4b2f-84a4-2d4c68625f4b"
@@ -66,6 +69,7 @@ def cached(name, fn, days=30):
 def main():
     cfg = json.loads((ROOT / "family" / "regions.json").read_text(encoding="utf-8"))
     regions = cfg["regions"]
+    shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "s").mkdir(exist_ok=True)
     (OUT / "streets").mkdir(exist_ok=True)
@@ -199,7 +203,27 @@ def main():
     (OUT / "refs.json").write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8")
     (OUT / "stores.json").write_text(json.dumps({"date": datetime.now().strftime("%Y-%m-%d"), "stores": meta},
                                                 ensure_ascii=False), encoding="utf-8")
+    swap_in()
     log(f"done: {len(meta)} branches with prices, {len(products)} products, {len(places)} localities")
+
+
+def swap_in():
+    """Replace site/data with the finished build (retries: a file being served can block a rename briefly)."""
+    old = LIVE.with_name("data.old")
+    shutil.rmtree(old, ignore_errors=True)
+    for attempt in range(30):
+        try:
+            if LIVE.exists():
+                LIVE.rename(old)
+            OUT.rename(LIVE)
+            break
+        except OSError:
+            if old.exists() and not LIVE.exists():
+                old.rename(LIVE)  # put the previous data back before retrying
+            time.sleep(2)
+    else:
+        raise SystemExit("could not swap the new data in (site/data is in use)")
+    shutil.rmtree(old, ignore_errors=True)
 
 
 if __name__ == "__main__":

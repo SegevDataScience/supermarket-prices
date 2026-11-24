@@ -26,6 +26,8 @@ if errorlevel 1 (
 for /f "delims=" %%u in ('git remote get-url origin') do set "ORIGIN=%%u"
 pushd site
 if exist ".git" rmdir /s /q ".git"
+rem never publish a build in progress
+(echo data.build/& echo data.old/)> .gitignore
 git init -q -b pages
 git add -A
 git -c user.name="supermarket-app" -c user.email="noreply@localhost" commit -q -m "Family page from the PC"

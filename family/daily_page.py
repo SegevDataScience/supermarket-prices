@@ -77,6 +77,105 @@ def km(v):
     return f'{v:.1f} ק"מ' if isinstance(v, (int, float)) else "משלוח"
 
 
+PAGE_CSS = r'''
+:root{--bg:#f5f6f2;--card:#ffffff;--card2:#f3f5f1;--line:#dfe4dd;--text:#18201d;--muted:#55605b;
+  --accent:#0d7a5c;--accent-ink:#ffffff;--accent-soft:#e3f2ec;--warn:#9a5200;--warn-soft:#fff4e2;--good:#0d7a5c;
+  --price:#0b5e47;--focus:#1b6fe0;--shadow:0 1px 2px rgb(16 24 20/.05),0 6px 20px rgb(16 24 20/.06);--radius:18px}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1311;--card:#161d1a;--card2:#1d2622;--line:#2b3631;--text:#ebf1ee;--muted:#a6b3ad;
+  --accent:#4cc9a0;--accent-ink:#06261b;--accent-soft:#183329;--warn:#f2b45a;--warn-soft:#2e2414;--good:#5fd6ad;
+  --price:#7fe3c0;--focus:#7fb4ff;--shadow:0 1px 2px rgb(0 0 0/.3),0 8px 24px rgb(0 0 0/.25)}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 Heebo,system-ui,"Segoe UI",Arial,sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 48px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:8px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;inset-inline-start:12px;top:-60px;background:var(--accent);color:var(--accent-ink);padding:8px 14px;border-radius:10px;z-index:50}
+.skip:focus{top:12px}
+header{display:flex;align-items:center;gap:14px;margin:4px 0 20px}
+.logo{flex:none;width:52px;height:52px;border-radius:16px;display:grid;place-items:center;font-size:28px;background:var(--accent-soft)}
+header h1{margin:0;font-size:clamp(1.45rem,4.5vw,1.9rem);font-weight:800;letter-spacing:-.01em;line-height:1.2}
+header p{margin:2px 0 0;color:var(--muted);font-size:.92rem}
+.notice{background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);color:var(--text);
+  border-radius:14px;padding:12px 14px;margin:14px 0;font-size:.95rem}
+.list{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin:18px 0;box-shadow:var(--shadow)}
+@media (max-width:560px){.list{padding:16px}}
+.list-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.list-head h2{margin:0;font-size:1.2rem;font-weight:700}
+.pill{font-size:.8rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 11px;background:var(--card2)}
+.step{display:flex;align-items:center;gap:10px;margin:22px 0 10px;font-weight:700;font-size:1.02rem}
+.step .num{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:.9rem;background:var(--accent);color:var(--accent-ink)}
+.hint{margin:-4px 0 10px;color:var(--muted);font-size:.9rem}
+.addr{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.addr label{font-size:.88rem;font-weight:600;color:var(--muted);display:grid;gap:6px}
+input,select,textarea{font:inherit;font-size:16px;color:var(--text);background:var(--card);border:1.5px solid var(--line);border-radius:12px;width:100%}
+input,select{min-height:48px;padding:10px 12px}
+textarea{padding:12px 14px;resize:vertical;min-height:150px;line-height:1.6}
+input:hover,select:hover,textarea:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+input:disabled{background:var(--card2);color:var(--muted);cursor:not-allowed}
+::placeholder{color:color-mix(in srgb,var(--muted) 80%,transparent)}
+.ac{position:relative}
+.ac-list{position:absolute;top:calc(100% + 4px);inset-inline:0;z-index:20;max-height:280px;overflow:auto;background:var(--card);
+  border:1.5px solid var(--accent);border-radius:12px;box-shadow:var(--shadow);padding:4px}
+.ac-item{display:block;width:100%;text-align:start;font:inherit;font-size:16px;font-weight:500;color:var(--text);background:none;border:0;border-radius:8px;
+  min-height:44px;padding:10px 12px;cursor:pointer}
+.ac-item:hover,.ac-item[aria-selected=true]{background:var(--accent-soft)}
+.ac-none{padding:12px;color:var(--muted);font-size:.95rem}
+.actions,.downloads{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:10px 18px;border-radius:12px;font:inherit;font-size:1rem;
+  font-weight:600;text-decoration:none;color:var(--text);background:var(--card);border:1.5px solid var(--line);cursor:pointer;transition:background .15s,border-color .15s}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);flex:1 1 220px;font-size:1.05rem;font-weight:700}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.65;cursor:progress}
+.btn.small{min-height:40px;padding:8px 14px;font-size:.92rem}
+#out{margin-top:8px}
+#out:empty{display:none}
+.meta{color:var(--muted);font-size:.9rem;margin:18px 0 0}
+.hero{margin:14px 0 6px;padding:20px;border-radius:16px;background:var(--accent-soft);border:1.5px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+.hero-tag{color:var(--accent);font-weight:700;font-size:.95rem}
+.hero-store{font-size:1.4rem;font-weight:800;margin-top:2px;line-height:1.3}
+.hero-where{color:var(--muted);font-size:.92rem;margin-top:2px}
+.hero-total{font-size:clamp(2.2rem,8vw,2.8rem);font-weight:800;color:var(--price);margin:8px 0 6px;font-variant-numeric:tabular-nums;line-height:1.1}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:.85rem;border-radius:999px;padding:4px 12px;background:var(--card);border:1px solid var(--line)}
+.chip.good{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent);font-weight:600}
+h3{font-size:1.02rem;margin:22px 0 10px;font-weight:700}
+.ranking{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.row{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--card2);border:1px solid var(--line)}
+.row.best{border:1.5px solid var(--accent);background:var(--accent-soft)}
+.rank{font-size:1.2rem;text-align:center;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+.who{min-width:0} .who b{display:block;font-weight:650;overflow-wrap:anywhere}
+.who small,.price small{display:block;color:var(--muted);font-size:.84rem}
+.price{text-align:end;white-space:nowrap} .price b{font-size:1.1rem;font-variant-numeric:tabular-nums}
+.price small.ok{color:var(--good)} .price small.partial{color:var(--warn)}
+details.more{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+details.more summary{cursor:pointer;font-weight:700;list-style:none;min-height:40px;display:flex;align-items:center;gap:8px}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"";width:8px;height:8px;border-inline-start:2px solid var(--accent);border-bottom:2px solid var(--accent);transform:rotate(45deg);transition:transform .15s;margin-inline-end:4px}
+details.more[open] summary::before{transform:rotate(-45deg)}
+.products{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}
+.prod{padding:12px 14px;border-radius:14px;background:var(--card2);border:1px solid var(--line)}
+.pname{font-weight:700} .pline{display:flex;justify-content:space-between;gap:12px;font-size:.92rem;margin-top:4px}
+.pline b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pline i{font-style:normal;font-size:.75rem;color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:6px;padding:0 6px;margin-inline-start:4px}
+.pline.cheap b{color:var(--good)}
+details.all summary{cursor:pointer;color:var(--accent);font-size:.88rem;font-weight:600;margin-top:6px;min-height:32px;display:flex;align-items:center}
+.pcheap{color:var(--muted);font-size:.85rem;margin-top:2px} .muted{color:var(--muted)}
+.refsel{display:block;font-size:.85rem;color:var(--muted);margin:6px 0}
+.refsel select{min-height:40px;padding:6px 10px;font-size:15px;margin-top:4px}
+.notes{color:var(--muted);font-size:.9rem;padding-inline-start:18px}
+.fine{color:var(--muted);font-size:.85rem;margin-top:14px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
+.tab{text-decoration:none;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:.92rem}
+.section-title{font-size:1.15rem;margin:28px 4px 0}
+footer{color:var(--muted);font-size:.85rem;margin:26px 4px;text-align:center;line-height:1.6}
+footer a{color:var(--accent)}
+@media (max-width:560px){.addr{grid-template-columns:1fr 1fr}.addr .wide{grid-column:1/-1}.row{grid-template-columns:30px 1fr auto;gap:10px;padding:12px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+'''
+
 SEARCH_JS = r'''<script>
 (() => {
   // Free search: pick a locality + street (closed lists), a radius and a shopping list. Runs in the
@@ -100,26 +199,34 @@ SEARCH_JS = r'''<script>
   // ---------- address: our own type-to-search lists (the browser's <datalist> doesn't work on most phones) ----------
   const L = (s) => N(s).replace(/ /g, "");  // loose: "ניל"י" = "נילי", "תל-אביב" = "תל אביב"
   function autocomplete(input, listEl, items, onPick) {
+    let active = -1;
+    const opts = () => [...listEl.querySelectorAll(".ac-item")];
+    const close = () => { listEl.hidden = true; input.setAttribute("aria-expanded", "false"); input.removeAttribute("aria-activedescendant"); active = -1; };
+    const mark = (i) => {
+      const o = opts(); if (!o.length) return;
+      active = (i + o.length) % o.length;
+      o.forEach((x, k) => x.setAttribute("aria-selected", k === active ? "true" : "false"));
+      input.setAttribute("aria-activedescendant", o[active].id); o[active].scrollIntoView({ block: "nearest" });
+    };
     const show = () => {
       const q = L(input.value);
       const all = items();
-      if (!all.length) { listEl.hidden = true; return; }
+      if (!all.length) { close(); return; }
       const hits = q ? all.filter((x) => L(x).includes(q)).sort((a, b) => (L(b).startsWith(q) - L(a).startsWith(q)) || a.length - b.length) : all;
-      listEl.innerHTML = hits.slice(0, 40).map((x) => `<button type=button class=ac-item>${esc(x)}</button>`).join("")
-        || `<div class=ac-none>לא נמצא ברשימה</div>`;
-      listEl.hidden = false;
+      listEl.innerHTML = hits.slice(0, 40).map((x, k) => `<button type=button tabindex=-1 role=option aria-selected=false id="${listEl.id}-${k}" class=ac-item>${esc(x)}</button>`).join("")
+        || `<div class=ac-none role=status>לא נמצא ברשימה - נסו לכתוב אחרת</div>`;
+      listEl.hidden = false; input.setAttribute("aria-expanded", "true"); active = -1;
     };
+    const pick = (b) => { input.value = b.textContent; close(); onPick(b.textContent); };
     input.addEventListener("input", show);
     input.addEventListener("focus", show);
     listEl.addEventListener("pointerdown", (e) => e.preventDefault());  // keep focus while tapping
-    listEl.addEventListener("click", (e) => {
-      const b = e.target.closest(".ac-item"); if (!b) return;
-      input.value = b.textContent; listEl.hidden = true; input.blur(); onPick(b.textContent);
-    });
-    input.addEventListener("blur", () => setTimeout(() => { listEl.hidden = true; }, 150));
+    listEl.addEventListener("click", (e) => { const b = e.target.closest(".ac-item"); if (b) { pick(b); input.blur(); } });
+    input.addEventListener("blur", () => setTimeout(close, 150));
     input.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      const first = listEl.querySelector(".ac-item"); if (first) { e.preventDefault(); first.click(); }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { if (listEl.hidden) show(); e.preventDefault(); mark(active + (e.key === "ArrowDown" ? 1 : -1)); }
+      else if (e.key === "Escape") close();
+      else if (e.key === "Enter") { const o = opts(); const b = o[active] || o[0]; if (b && !listEl.hidden) { e.preventDefault(); pick(b); } }
     });
   }
   async function init() {
@@ -136,7 +243,7 @@ SEARCH_JS = r'''<script>
   async function cityPicked() {
     const p = place();
     $("street").value = ""; STREETS = [];
-    $("street").disabled = !p || !p.c; $("street").placeholder = !p ? "בחרו יישוב קודם" : (p.c ? "רחוב (לא חובה)" : "אזור - בלי רחוב");
+    $("street").disabled = !p || !p.c; $("street").placeholder = !p ? "בחרו יישוב קודם" : (p.c ? "התחילו להקליד ובחרו" : "אזור - בלי רחוב");
     if (!p || !p.c) return;
     try { STREETS = await get(`data/streets/${p.c}.json`); } catch {}
   }
@@ -248,32 +355,50 @@ SEARCH_JS = r'''<script>
     const medal = ["🥇", "🥈", "🥉"];
     const where = (st) => st.kind === "delivery" ? "🚚 משלוח עד הבית (יש לוודא שמגיעים לכתובת)" : `📍 ${st.approx ? "≈ " : ""}${st.km.toFixed(1)} ק"מ · ${esc(st.addr)}`;
     const old = [...new Set(S.map((st) => st.date))].sort();
-    const rows = agg.filter((a) => a.st.kind !== "convenience").map((a, i) => `<li class="row${a === w ? " best" : ""}"><span class=rank>${medal[i] || i + 1}</span>
+    const rows = agg.filter((a) => a.st.kind !== "convenience").map((a, i) => `<li class="row${a === w ? " best" : ""}"><span class=rank aria-label="מקום ${i + 1}">${medal[i] || i + 1}</span>
       <span class=who><b>${esc(a.st.name)}</b><small>${where(a.st)}</small></span>
       <span class=price><b>${money(a.total)}</b><small class="${a.found === items.length ? "ok" : "partial"}">${a.found}/${items.length} מוצרים${a.subs ? ` · ${a.subs} תחליפים` : ""}</small></span></li>`).join("");
     const prods = items.map((it, ii) => {
       if (it.r.ref === null || it.r.ref === undefined) return `<li class=prod><div class=pname>${esc(it.text)}</div><div class=pcheap>לא נמצא בחנויות ברדיוס</div></li>`;
       const opts = it.r.cands.map((pi) => `<option value="${pi}"${pi === it.r.ref ? " selected" : ""}>${esc(PRODUCTS[pi][1])}</option>`).join("");
       const lines = it.r.picks.map((x, si) => x ? { ...x, si } : null).filter(Boolean).sort((a, b) => a.total - b.total)
-        .map((x, k) => `<div class="pline${k === 0 ? " cheap" : ""}"><span>${esc(S[x.si].name)} · ${esc(PRODUCTS[x.pi][1])}${x.sub ? " <i>תחליף</i>" : ""}</span><b>${money(x.total)}</b></div>`).join("");
+        .map((x, k) => `<div class="pline${k === 0 ? " cheap" : ""}"><span>${esc(S[x.si].name)} · ${esc(PRODUCTS[x.pi][1])}${x.sub ? " <i>תחליף</i>" : ""}</span><b>${money(x.total)}</b></div>`);
+      const shown = lines.slice(0, 4).join(""), rest = lines.slice(4).join("");
       return `<li class=prod><div class=pname>${esc(it.text)}${it.r.weighted ? ` <small class=muted>(${it.r.units} ק"ג)</small>` : ""}</div>
-        <label class=refsel>מוצר להשוואה: <select data-i="${ii}">${opts}</select></label>${lines}</li>`;
+        <label class=refsel>מוצר להשוואה: <select data-i="${ii}">${opts}</select></label>${shown}
+        ${rest ? `<details class=all><summary>עוד ${lines.length - 4} חנויות</summary>${rest}</details>` : ""}</li>`;
     }).join("");
     $("out").innerHTML = `
-      <p class=muted style="font-size:.85rem;margin:10px 0 0">📍 ${esc(home.label)} · ${S.filter((x) => x.kind !== "delivery").length} סניפים ברדיוס · מחירים מ-${esc(old.map((d) => d.split("-").reverse().slice(0, 2).join(".")).join(", "))}</p>
+      <p class=meta>📍 ${esc(home.label)} · ${S.filter((x) => x.kind !== "delivery").length} סניפים ברדיוס · מחירים מ-${esc(old.map((d) => d.split("-").reverse().slice(0, 2).join(".")).join(", "))}</p>
       <div class=hero><div class=hero-tag>🏆 הסל הכי זול</div><div class=hero-store>${esc(w.st.name)}</div>
         <div class=hero-where>${where(w.st)}</div><div class=hero-total>${money(w.total)}</div>
         <div class=chips><span class=chip>✔ ${w.found} מתוך ${items.length} מוצרים</span>${w.subs ? `<span class=chip>↺ ${w.subs} תחליפים</span>` : ""}
         ${next && next.total - w.total > 0.005 ? `<span class="chip good">חוסך ${money(next.total - w.total)} לעומת ${esc(next.st.name)}</span>` : ""}</div></div>
       <h3>דירוג החנויות</h3><ol class=ranking>${rows}</ol>
+      <div class=downloads><button type=button class="btn small" id=xls>⬇ הורדה לאקסל</button></div>
       <details class=more open><summary>פירוט לפי מוצר (אפשר להחליף את המוצר להשוואה)</summary><ul class=products>${prods}</ul></details>
-      <p class=muted style="font-size:.8rem">ההתאמה לפי שם המוצר והברקוד (מוצרים שחופשו באפליקציה - בדיוק כמו באפליקציה); "תחליף" = החנות לא מוכרת את אותו מוצר. ירקות בלי ק"ג נספרים כ-150 גרם ליחידה. מרחקים בקו אוויר.</p>`;
+      <p class=fine>ההתאמה לפי שם המוצר והברקוד (מוצרים שחופשו באפליקציה - בדיוק כמו באפליקציה); "תחליף" = החנות לא מוכרת את אותו מוצר. ירקות בלי ק"ג נספרים כ-150 גרם ליחידה. מרחקים בקו אוויר.</p>`;
+    $("xls").addEventListener("click", () => download(agg, items, home));
     $("out").querySelectorAll("select[data-i]").forEach((sel) => sel.addEventListener("change", () => {
       const cur = {}; $("out").querySelectorAll("select[data-i]").forEach((x) => { cur[+x.dataset.i] = +x.value; });
       const box = $("out").querySelector(".notice"); const keep = box ? box.outerHTML : "";
       render(items.map((it, i) => ({ ...it, r: solve(it, cur[i]) })), home);
       if (keep) $("out").insertAdjacentHTML("afterbegin", keep);
     }));
+  }
+
+  // Excel: a CSV file (UTF-8 with BOM, so Excel shows Hebrew) - the store ranking and every product line
+  function download(agg, items, home) {
+    const S = DATA.stores, q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const out = [["השוואת מחירים", home.label, new Date().toLocaleDateString("he-IL")], [],
+      ["מקום", "חנות", "כתובת", "מרחק (ק\"מ)", "סה\"כ (₪)", "מוצרים שנמצאו", "מתוך", "תחליפים", "תאריך המחירים"]];
+    agg.forEach((a, i) => out.push([i + 1, a.st.name, a.st.kind === "delivery" ? "משלוח" : a.st.addr, a.st.kind === "delivery" ? "" : a.st.km.toFixed(1),
+      a.total.toFixed(2), a.found, items.length, a.subs, a.st.date]));
+    out.push([], ["מוצר מבוקש", "חנות", "המוצר בחנות", "כמות", "מחיר ליחידה (₪)", "סה\"כ (₪)", "תחליף?", "תאריך המחיר"]);
+    items.forEach((it) => it.r.picks.forEach((x, si) => { if (x) out.push([it.text, S[si].name, PRODUCTS[x.pi][1], it.r.units, x.price.toFixed(2), x.total.toFixed(2), x.sub ? "כן" : "", S[si].date]); }));
+    const blob = new Blob(["\ufeff" + out.map((r) => r.map(q).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "השוואת-מחירים.csv";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
   async function search() {
@@ -302,11 +427,12 @@ SEARCH_JS = r'''<script>
   }
 
   $("go").addEventListener("click", async () => {
-    $("go").disabled = true; $("go").textContent = "מחפש…";
-    try { await search(); } catch (e) { $("out").innerHTML = `<div class=notice>שגיאה: ${esc(e.message)}</div>`; }
-    $("go").disabled = false; $("go").textContent = "השווה מחירים";
+    $("go").disabled = true; $("go").textContent = "מחפש…"; $("out").setAttribute("aria-busy", "true");
+    try { await search(); } catch (e) { $("out").innerHTML = `<div class=notice role=alert>שגיאה: ${esc(e.message)}</div>`; }
+    $("go").disabled = false; $("go").textContent = "השוו מחירים"; $("out").removeAttribute("aria-busy");
   });
   $("clear").addEventListener("click", () => { $("q").value = ""; $("out").innerHTML = ""; $("q").focus(); });
+  if (["127.0.0.1", "localhost"].includes(location.hostname)) $("local-tools").hidden = false;  // same page; on the PC also a link to the full tool
   init();
 })();
 </script>
@@ -383,92 +509,32 @@ def render(jobs, titles, stamp, notice=""):
 </section>""")
     return f"""<!doctype html><html lang=he dir=rtl><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noindex,nofollow">
-<meta name=theme-color content="#0b1020"><title>איפה הכי זול לקנות</title>
+<meta name=theme-color content="#0d7a5c"><title>איפה הכי זול לקנות</title>
+<link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
+<link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap">
 <link rel=icon href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
-<style>
-:root{{--bg:#0b1020;--bg2:#121a3a;--card:#151c3b;--card2:#1b2449;--line:#2a3463;--text:#eef1ff;--muted:#9aa3c7;
-  --accent:#22d3ee;--accent2:#a78bfa;--lime:#a3e635;--warn:#fbbf24;--good:#34d399;--shadow:0 10px 30px rgb(0 0 0/.35)}}
-@media (prefers-color-scheme:light){{:root{{--bg:#eef2fb;--bg2:#e3e9f8;--card:#ffffff;--card2:#f5f7fd;--line:#dfe5f3;--text:#141a33;
-  --muted:#5b6485;--accent:#0891b2;--accent2:#7c3aed;--lime:#3f6212;--warn:#b45309;--good:#047857;--shadow:0 8px 24px rgb(20 26 51/.08)}}}}
-*{{box-sizing:border-box}}
-body{{margin:0;color:var(--text);font-family:system-ui,"Segoe UI",Rubik,Arial,sans-serif;line-height:1.45;
-  background:radial-gradient(1200px 500px at 85% -10%,rgb(124 58 237/.25),transparent 60%),
-             radial-gradient(900px 400px at 0% 0%,rgb(34 211 238/.18),transparent 55%),var(--bg);min-height:100vh}}
-main{{max-width:720px;margin:0 auto;padding:20px 16px 40px}}
-header h1{{margin:0;font-size:1.7rem;letter-spacing:-.01em}}
-header h1 span{{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}}
-header p{{margin:6px 0 0;color:var(--muted);font-size:.9rem}}
-.tabs{{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}}
-.tab{{text-decoration:none;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:.88rem}}
-.notice{{background:linear-gradient(90deg,rgb(251 191 36/.18),rgb(251 191 36/.08));border:1px solid rgb(251 191 36/.45);
-  color:var(--text);border-radius:14px;padding:12px 14px;margin:14px 0;font-size:.9rem}}
-.list{{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;margin:18px 0;box-shadow:var(--shadow)}}
-.list-head{{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}}
-.list-head h2{{margin:0;font-size:1.2rem}}
-.pill{{font-size:.78rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--card2)}}
-.hero{{margin:14px 0 6px;padding:18px;border-radius:16px;background:linear-gradient(135deg,rgb(34 211 238/.16),rgb(124 58 237/.14));
-  border:1px solid rgb(34 211 238/.35)}}
-.hero-tag{{color:var(--accent);font-weight:700;font-size:.9rem}}
-.hero-store{{font-size:1.45rem;font-weight:800;margin-top:2px}}
-.hero-where{{color:var(--muted);font-size:.88rem}}
-.hero-total{{font-size:2.6rem;font-weight:800;color:var(--lime);margin:8px 0 4px;font-variant-numeric:tabular-nums}}
-.chips{{display:flex;flex-wrap:wrap;gap:6px}}
-.chip{{font-size:.8rem;border-radius:999px;padding:4px 10px;background:var(--card2);border:1px solid var(--line)}}
-.chip.good{{color:var(--good);border-color:rgb(52 211 153/.45)}}
-h3{{font-size:1rem;margin:18px 0 8px;color:var(--muted);font-weight:600}}
-.ranking{{list-style:none;margin:0;padding:0;display:grid;gap:8px}}
-.row{{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;
-  background:var(--card2);border:1px solid var(--line)}}
-.row.best{{border-color:var(--accent);box-shadow:0 0 0 1px rgb(34 211 238/.35) inset}}
-.rank{{font-size:1.15rem;text-align:center;color:var(--muted);font-weight:700}}
-.who b{{display:block;font-weight:650}} .who small,.price small{{display:block;color:var(--muted);font-size:.78rem}}
-.price{{text-align:left;white-space:nowrap}} .price b{{font-size:1.05rem;font-variant-numeric:tabular-nums}}
-.price small.ok{{color:var(--good)}} .price small.partial{{color:var(--warn)}}
-details.more{{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}}
-details.more summary{{cursor:pointer;font-weight:600;list-style:none}} details.more summary::before{{content:"▸ ";color:var(--accent)}}
-details.more[open] summary::before{{content:"▾ "}}
-.products{{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}}
-.prod{{padding:10px 12px;border-radius:12px;background:var(--card2);border:1px solid var(--line)}}
-.pname{{font-weight:650}} .pline{{display:flex;justify-content:space-between;gap:10px;font-size:.88rem;margin-top:2px}}
-.pline i{{font-style:normal;font-size:.72rem;color:var(--warn);border:1px solid rgb(251 191 36/.45);border-radius:6px;padding:0 5px;margin-inline-start:4px}}
-.pcheap{{color:var(--muted);font-size:.78rem;margin-top:2px}} .muted{{color:var(--muted)}}
-.notes{{color:var(--muted);font-size:.84rem;padding-inline-start:18px}}
-.downloads{{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}}
-.btn{{text-decoration:none;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:.86rem}}
-.btn:hover{{border-color:var(--accent)}} .btn.primary{{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#06101f;border:0;font-weight:700}}
-button.btn{{font:inherit;cursor:pointer}} button.btn:disabled{{opacity:.6}}
-textarea{{width:100%;font:inherit;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;resize:vertical}}
-textarea:focus{{outline:2px solid var(--accent);outline-offset:1px}}
-.section-title{{font-size:1.1rem;margin:26px 4px 0}}
-.addr{{display:grid;grid-template-columns:2fr 2fr 1fr 1fr;gap:8px;margin-top:10px}} .addr label{{font-size:.8rem;color:var(--muted);display:grid;gap:4px}}
-.addr input,.addr select{{font:inherit;font-size:.95rem;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%}}
-.addr input:disabled{{opacity:.55}}
-.ac{{position:relative}} .ac-list{{position:absolute;top:100%;inset-inline:0;z-index:20;max-height:260px;overflow:auto;margin-top:4px;
-  background:var(--card);border:1px solid var(--accent);border-radius:12px;box-shadow:var(--shadow)}}
-.ac-item{{display:block;width:100%;text-align:right;font:inherit;font-size:.95rem;color:var(--text);background:none;border:0;border-bottom:1px solid var(--line);padding:11px 12px;cursor:pointer}}
-.ac-item:hover,.ac-item:focus{{background:var(--card2)}} .ac-none{{padding:11px 12px;color:var(--muted);font-size:.9rem}} @media (max-width:560px){{.addr{{grid-template-columns:1fr 1fr}}}}
-.refsel{{display:block;font-size:.8rem;color:var(--muted);margin:4px 0}} .refsel select{{max-width:100%;font:inherit;font-size:.82rem;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:2px 6px}}
-.pline.cheap b{{color:var(--good)}} #out{{margin-top:6px}}
-footer{{color:var(--muted);font-size:.8rem;margin:22px 4px;text-align:center}}
-</style></head><body><main>
-<header><h1>🛒 <span>איפה הכי זול לקנות?</span></h1>
-<p>עודכן {e(stamp)} · מחירי מדף מהקבצים הרשמיים של הרשתות, בלי מבצעים ומחירי מועדון</p></header>
+<style>{PAGE_CSS}</style></head><body><a class=skip href="#q">דילוג לרשימת הקניות</a><main>
+<header><div class=logo aria-hidden=true>🛒</div><div><h1>איפה הכי זול לקנות?</h1>
+<p>עודכן {e(stamp)} · מחירי מדף מהקבצים הרשמיים של הרשתות (בלי מבצעים ומחירי מועדון)</p></div></header>
 {f'<div class=notice>⚠ {e(notice)}</div>' if notice else ""}
-<section class=list id=search>
-  <div class=list-head><h2>🔎 חיפוש חופשי</h2><span class=pill id=datapill>טוען נתונים…</span></div>
+<section class=list id=search aria-labelledby=search-title>
+  <div class=list-head><h2 id=search-title>השוואת מחירים</h2><span class=pill id=datapill>טוען נתונים…</span></div>
+  <div class=step><span class=num aria-hidden=true>1</span>איפה קונים?</div>
   <div class=addr>
-    <label class=ac>עיר / יישוב / אזור<input id=city autocomplete=off autocorrect=off spellcheck=false placeholder="התחילו להקליד ובחרו"><div id=city-list class=ac-list hidden></div></label>
-    <label class=ac>רחוב<input id=street autocomplete=off autocorrect=off spellcheck=false disabled placeholder="בחרו יישוב קודם"><div id=street-list class=ac-list hidden></div></label>
-    <label>מספר<input id=num inputmode=numeric maxlength=5 placeholder="לא חובה"></label>
-    <label>רדיוס<select id=rad><option value=2>2 ק"מ</option><option value=3>3 ק"מ</option><option value=4 selected>4 ק"מ</option><option value=6>6 ק"מ</option><option value=8>8 ק"מ</option><option value=12>12 ק"מ</option></select></label>
+    <label class="ac wide" for=city>עיר / יישוב / אזור<input id=city role=combobox aria-autocomplete=list aria-expanded=false aria-controls=city-list autocomplete=off autocorrect=off spellcheck=false placeholder="התחילו להקליד ובחרו מהרשימה"><div id=city-list class=ac-list role=listbox aria-label="יישובים" hidden></div></label>
+    <label class="ac wide" for=street>רחוב (לא חובה)<input id=street role=combobox aria-autocomplete=list aria-expanded=false aria-controls=street-list autocomplete=off autocorrect=off spellcheck=false disabled placeholder="בחרו יישוב קודם"><div id=street-list class=ac-list role=listbox aria-label="רחובות" hidden></div></label>
+    <label for=num>מספר בית<input id=num inputmode=numeric maxlength=5 placeholder="לא חובה"></label>
+    <label for=rad>רדיוס חיפוש<select id=rad><option value=2>2 ק"מ</option><option value=3>3 ק"מ</option><option value=4 selected>4 ק"מ</option><option value=6>6 ק"מ</option><option value=8>8 ק"מ</option><option value=12>12 ק"מ</option></select></label>
   </div>
-  <p class=muted style="margin:10px 0 6px;font-size:.88rem">מה קונים? מוצר בכל שורה, אפשר עם כמות ("10 מלפפונים", "חלב 2").</p>
-  <textarea id=q rows=5 placeholder="למשל:&#10;חלב 3%&#10;10 מלפפונים&#10;במבה&#10;קפה טורקי"></textarea>
-  <div class=downloads><button id=go class="btn primary" type=button>השווה מחירים</button><button id=clear class=btn type=button>נקה</button></div>
-  <div id=out></div>
+  <div class=step><span class=num aria-hidden=true>2</span><label for=q>מה קונים?</label></div>
+  <p class=hint id=q-hint>מוצר בכל שורה, אפשר עם כמות: "10 מלפפונים", "חלב 2".</p>
+  <textarea id=q rows=6 aria-describedby=q-hint placeholder="חלב 3%&#10;10 מלפפונים&#10;במבה&#10;קפה טורקי"></textarea>
+  <div class=actions><button id=go class="btn primary" type=button>השוו מחירים</button><button id=clear class=btn type=button>ניקוי</button></div>
+  <div id=out aria-live=polite></div>
 </section>
 {("<h2 class=section-title>📋 הרשימות השמורות</h2>" + (f'<nav class=tabs>{"".join(tabs)}</nav>' if len(tabs) > 1 else "") + "".join(sections)) if sections else ""}
-<footer>מתעדכן אוטומטית כל 3 ימים. הסל הכי זול = הסכום הנמוך ביותר לכל המוצרים יחד, מבין החנויות שיש בהן הכי הרבה מהמוצרים (כולל תחליפים).</footer>
+<footer>מתעדכן אוטומטית כל 3 ימים. הסל הכי זול = הסכום הנמוך ביותר לכל המוצרים יחד, מבין החנויות שיש בהן הכי הרבה מהמוצרים (כולל תחליפים).
+<span id=local-tools hidden><br><a href="/advanced">הכלי המלא במחשב (בדיקה חיה של המחירים)</a></span></footer>
 </main>
 """ + SEARCH_JS + """
 </body></html>"""
