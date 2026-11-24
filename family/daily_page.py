@@ -172,7 +172,11 @@ details.all summary{cursor:pointer;color:var(--accent);font-size:.88rem;font-wei
 .section-title{font-size:1.15rem;margin:28px 4px 0}
 footer{color:var(--muted);font-size:.85rem;margin:26px 4px;text-align:center;line-height:1.6}
 footer a{color:var(--accent)}
-@media (max-width:560px){.addr{grid-template-columns:1fr 1fr}.addr .wide{grid-column:1/-1}.row{grid-template-columns:30px 1fr auto;gap:10px;padding:12px}}
+a.web{color:var(--accent);font-weight:600;text-decoration:none;white-space:nowrap;margin-inline-start:6px;display:inline-block;padding:2px 0}
+a.web:hover{text-decoration:underline}
+@media (max-width:560px){.addr{grid-template-columns:1fr 1fr}.addr .wide{grid-column:1/-1}
+  .row{grid-template-columns:28px 1fr auto;gap:8px;padding:12px;align-items:start}
+  .price{max-width:6.5rem} .price small{white-space:normal;line-height:1.35}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 '''
 
@@ -192,6 +196,14 @@ SEARCH_JS = r'''<script>
     const h = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dn / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
   const get = async (u) => { const r = await fetch(u, { cache: "no-cache" }); if (!r.ok) throw new Error(u + " " + r.status); return r.json(); };
 
+  // chains' own websites (checked by hand: answers, and is the chain's own domain). Missing = no working site found.
+  const SITES = { shufersal: "https://www.shufersal.co.il/", RamiLevi: "https://www.rami-levy.co.il/", carrefour: "https://www.carrefour.co.il/",
+    TivTaam: "https://www.tivtaam.co.il/", victory: "https://www.victory.co.il/", yellow: "https://www.yellow.co.il/",
+    freshmarket: "https://www.freshmarket.co.il/", supersapir: "https://www.supersapir.co.il/", superyuda: "https://www.yuda.co.il/",
+    osherad: "https://osherad.co.il/", hazihinam: "https://shop.hazi-hinam.co.il/", Stop_Market: "https://www.stopmarket.co.il/",
+    yohananof: "https://yochananof.co.il/", Keshet: "https://www.keshet-teamim.co.il/" };
+  const site = (st) => { const u = SITES[String(st.ref || "").split(":")[0]];
+    return u ? ` <a class=web href="${u}" target=_blank rel="noopener noreferrer" aria-label="האתר של ${esc(st.name)} (נפתח בלשונית חדשה)">אתר הרשת ↗</a>` : ""; };
   let PLACES = [], STORES = null, PRODUCTS = null, WORDS = null, REFS = new Map(), STREETS = [];
   const fileCache = new Map();
   let DATA = null;
@@ -260,8 +272,12 @@ SEARCH_JS = r'''<script>
   }
 
   // ---------- matching (same rules as before) ----------
-  const wordOk = (q, w) => (q.length <= 3 ? w === q || w === q + "ימ" || w === q + "ות" : w.startsWith(q.slice(0, Math.min(q.length, 4))));
+  const wordOk = (q, w) => (q.length <= 3 ? w === q || w === q + "ימ" || w === q + "ות"
+    : w.startsWith(q.slice(0, 4)) && Math.abs(w.length - q.length) <= 2);
   const size = (name) => { const m = N(name).match(SIZE); return m ? m[1] + m[2][0] : null; };
+  // pack size in grams / ml (kg and litre x1000), to keep substitutes to a similar size
+  const amount = (name) => { const m = String(name).replace(/ם/g, "מ").replace(/ן/g, "נ").match(SIZE); if (!m) return null; const v = parseFloat(m[1]), u = m[2];
+    return /^ק/.test(u) || /^(ליטר|ל)$/.test(u) ? v * 1000 : /^(גרמ|גר|ג|מ"?ל|מל)$/.test(u) ? v : null; };
   // ---------- understanding messy text ----------
   let VOCAB = null, PREF4 = null;
   function vocab() {
@@ -270,7 +286,7 @@ SEARCH_JS = r'''<script>
     WORDS.forEach((ws) => ws.forEach((w) => { if (w.length > 1) { VOCAB.add(w); if (w.length >= 4) PREF4.add(w.slice(0, 4)); } }));
   }
   const known = (w) => (w.length <= 3 ? VOCAB.has(w) || VOCAB.has(w + "ימ") || VOCAB.has(w + "ות") : PREF4.has(w.slice(0, 4)));
-  const STOP = new Set(["של", "עם", "בלי", "גם", "את", "או", "וגם", "קצת", "הרבה", "כמה", "יחידה", "יחידות", "חבילה", "חבילות", "אריזה", "בקבוק"]);
+  const STOP = new Set(["של", "עם", "בלי", "גם", "את", "או", "וגם", "קצת", "הרבה", "כמה", "יחידה", "יחידות", "חבילה", "חבילות", "אריזה", "בקבוק", "בקבוקי", "בקבוקים", "פחית", "פחיות", "קופסה", "קופסת", "קופסאות", "שקית", "שקיות", "חבילת"]);
   // "האורז" -> "אורז", "ולחם" -> "לחם", "אורזז" -> "אורז"; null when nothing like it is sold anywhere
   function fixWord(w) {
     if (STOP.has(w)) return "";
@@ -296,11 +312,11 @@ SEARCH_JS = r'''<script>
     let m = t.match(/^(\d+(?:\.\d+)?)\s+(.+)$/) || t.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(?:ק"?ג|קילו|יח'?|יחידות)?$/);
     if (m) { const a = parseFloat(m[1]); if (!isNaN(a)) { qty = a; t = m[2]; } else { qty = parseFloat(m[2]); t = m[1]; } }
     t = t.replace(/ק"?ג|קילו|יחידות|יח'?/g, " ").trim();
-    const raw = N(t).split(" ").filter((w) => w.length > 1);
+    const raw = N(t).split(" ").filter((w) => w.length > 1 && !/^\d+$/.test(w) && !UNITW.test(w));
     const fixed = raw.map(fixWord);
     const q = fixed.filter((w) => w);  // "" = filler word, null = not understood
     const bad = !q.length || fixed.filter((w) => w === null).length > q.length;
-    return { text: line.trim(), q: bad ? [] : q, qty, kg, bad };
+    return { text: line.trim(), q: bad ? [] : q, qty, kg, bad, amt: amount(line) };
   }
   function solve(item, refOverride) {
     const p = PRODUCTS, s = DATA.s;
@@ -318,7 +334,8 @@ SEARCH_JS = r'''<script>
       const ws = WORDS[pi], cov = where.get(pi).length, prices = where.get(pi).map((x) => x[1]).sort((a, b) => a - b);
       const head = (ws[0] && wordOk(first, ws[0])) ? 1 : 0;
       const extra = ws.filter((w) => w.length > 1 && !/^\d/.test(w) && !UNITW.test(w) && !item.q.some((q) => wordOk(q, w))).length;
-      return [head && p[pi][2] === 1 ? 2 : head, cov >= maxCov - 1 ? 1 : 0, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
+      const sameAmt = item.amt && amount(p[pi][1]) === item.amt ? 1 : 0;  // "מים 1.5 ליטר" -> the 1.5 litre bottle
+      return [head && p[pi][2] === 1 ? 2 : head, cov >= maxCov - 1 ? 1 : 0, sameAmt, -extra, cov, -(prices[Math.floor(prices.length / 2)] || 1e9)];
     };
     const ranked = pool.sort((a, b) => { const A = score(a), B = score(b); for (let k = 0; k < A.length; k++) if (B[k] !== A[k]) return B[k] - A[k]; return 0; });
     if (known !== undefined && where.get(known).length) { ranked.splice(ranked.indexOf(known), 1); ranked.unshift(known); }
@@ -326,10 +343,16 @@ SEARCH_JS = r'''<script>
     const refSize = size(p[ref][1]), weighted = p[ref][2] === 1, refWords = new Set(WORDS[ref]);
     let units = item.qty ?? 1;
     if (weighted && item.qty && !item.kg) units = +(item.qty * 0.15).toFixed(2);
+    // "ביצים L 12", "קולה 6": the number is the pack ("12 ביצי משק"), not 12 packs
+    if (item.qty > 1 && !item.kg && !weighted && (WORDS[ref].includes(String(item.qty)) || (/ביצ/.test(item.text) && [6, 10, 12, 18, 20, 24, 30].includes(item.qty)))) units = 1;
+    const refAmt = amount(p[ref][1]), rhead = WORDS[ref][0] || "";
+    // a substitute is the same kind of product (its first words match: not "פתיתים ... אורז" for rice) and a similar size
+    const headOk = (pi) => { const w = WORDS[pi][0] || ""; return wordOk(first, w) || (rhead.length > 2 && w.slice(0, 4) === rhead.slice(0, 4)); };
+    const sizeOk = (pi) => { if (!refAmt) return true; const a = amount(p[pi][1]); return !a || (a / refAmt >= 0.6 && a / refAmt <= 1.67); };
     const picks = s.map((rows) => {
       const exact = rows.find(([pi]) => pi === ref);
       if (exact) return { pi: ref, price: exact[1], sub: false };
-      const opts = rows.filter(([pi]) => where.has(pi) && (p[pi][2] === 1) === weighted);
+      const opts = rows.filter(([pi]) => where.has(pi) && (p[pi][2] === 1) === weighted && headOk(pi) && sizeOk(pi));
       if (!opts.length) return null;
       const best = opts.map(([pi, price]) => ({ pi, price, same: refSize && size(p[pi][1]) === refSize ? 1 : 0,
         overlap: WORDS[pi].filter((w) => refWords.has(w)).length })).sort((a, b) => b.same - a.same || b.overlap - a.overlap || a.price - b.price)[0];
@@ -338,7 +361,9 @@ SEARCH_JS = r'''<script>
       return { pi: best.pi, price: best.price, sub: !sameProduce };
     });
     const ex = picks.filter((x) => x && !x.sub).map((x) => x.price).sort((a, b) => a - b), med = ex[Math.floor(ex.length / 2)];
-    picks.forEach((x, i) => { if (x) { x.total = +(x.price * units).toFixed(2); if (x.sub && med && x.price > 2 * med) picks[i] = null; } });
+    picks.forEach((x, i) => { if (x) { x.total = +(x.price * units).toFixed(2);
+      if (x.sub && med && (x.price > 2 * med || x.price < med / 2.5)) picks[i] = null;
+      else if (!x.sub && med && ex.length >= 3 && Math.abs(x.price - med) > 3 && (x.price > 4 * med || x.price < med / 4)) picks[i] = null; } });  // a typo price in one branch
     return { cands: ranked.slice(0, 8), ref, picks, units, weighted };
   }
 
@@ -356,7 +381,7 @@ SEARCH_JS = r'''<script>
     const where = (st) => st.kind === "delivery" ? "🚚 משלוח עד הבית (יש לוודא שמגיעים לכתובת)" : `📍 ${st.approx ? "≈ " : ""}${st.km.toFixed(1)} ק"מ · ${esc(st.addr)}`;
     const old = [...new Set(S.map((st) => st.date))].sort();
     const rows = agg.filter((a) => a.st.kind !== "convenience").map((a, i) => `<li class="row${a === w ? " best" : ""}"><span class=rank aria-label="מקום ${i + 1}">${medal[i] || i + 1}</span>
-      <span class=who><b>${esc(a.st.name)}</b><small>${where(a.st)}</small></span>
+      <span class=who><b>${esc(a.st.name)}</b><small>${where(a.st)}${site(a.st)}</small></span>
       <span class=price><b>${money(a.total)}</b><small class="${a.found === items.length ? "ok" : "partial"}">${a.found}/${items.length} מוצרים${a.subs ? ` · ${a.subs} תחליפים` : ""}</small></span></li>`).join("");
     const prods = items.map((it, ii) => {
       if (it.r.ref === null || it.r.ref === undefined) return `<li class=prod><div class=pname>${esc(it.text)}</div><div class=pcheap>לא נמצא בחנויות ברדיוס</div></li>`;
@@ -369,9 +394,10 @@ SEARCH_JS = r'''<script>
         ${rest ? `<details class=all><summary>עוד ${lines.length - 4} חנויות</summary>${rest}</details>` : ""}</li>`;
     }).join("");
     $("out").innerHTML = `
+      ${S.some((x) => x.kind !== "delivery") ? "" : `<div class=notice>אין סניפים ברדיוס שנבחר - מוצגים רק שירותי משלוחים. אפשר להגדיל את הרדיוס.</div>`}
       <p class=meta>📍 ${esc(home.label)} · ${S.filter((x) => x.kind !== "delivery").length} סניפים ברדיוס · מחירים מ-${esc(old.map((d) => d.split("-").reverse().slice(0, 2).join(".")).join(", "))}</p>
       <div class=hero><div class=hero-tag>🏆 הסל הכי זול</div><div class=hero-store>${esc(w.st.name)}</div>
-        <div class=hero-where>${where(w.st)}</div><div class=hero-total>${money(w.total)}</div>
+        <div class=hero-where>${where(w.st)}${site(w.st)}</div><div class=hero-total>${money(w.total)}</div>
         <div class=chips><span class=chip>✔ ${w.found} מתוך ${items.length} מוצרים</span>${w.subs ? `<span class=chip>↺ ${w.subs} תחליפים</span>` : ""}
         ${next && next.total - w.total > 0.005 ? `<span class="chip good">חוסך ${money(next.total - w.total)} לעומת ${esc(next.st.name)}</span>` : ""}</div></div>
       <h3>דירוג החנויות</h3><ol class=ranking>${rows}</ol>
@@ -413,8 +439,11 @@ SEARCH_JS = r'''<script>
       WORDS = PRODUCTS.map((x) => N(x[1]).split(" "));
       Object.entries(await get("data/refs.json")).forEach(([k, v]) => REFS.set(N(k).split(" ").filter((w) => w.length > 1).join(" "), v));
     }
-    const chosen = STORES.map((st, i) => ({ ...st, i, km: st.kind === "delivery" ? 0 : km(home.xy, [st.la, st.lo]) }))
-      .filter((st) => st.kind === "delivery" || st.km <= radius + (st.approx ? -1 : 0))
+    let chosen = STORES.map((st, i) => ({ ...st, i, km: st.kind === "delivery" ? 0 : km(home.xy, [st.la, st.lo]) }))
+      .filter((st) => !/ליקוט|\bBE\d*\b/i.test(st.name))  // picking centres, beauty branches: not shops
+      .filter((st) => st.kind === "delivery" || st.km <= radius + (st.approx ? -1 : 0));
+    const nearRefs = new Set(chosen.filter((st) => st.kind !== "delivery").map((st) => st.ref));
+    chosen = chosen.filter((st) => st.kind !== "delivery" || !nearRefs.has(st.ref))  // the delivery branch is right here: one row
       .sort((a, b) => (a.kind === "delivery") - (b.kind === "delivery") || a.km - b.km).slice(0, 32);
     const rows = await Promise.all(chosen.map(async (st) => { if (!fileCache.has(st.i)) fileCache.set(st.i, await get(`data/s/${st.i}.json`)); return fileCache.get(st.i); }));
     DATA = { stores: chosen, s: rows };

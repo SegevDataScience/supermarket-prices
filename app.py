@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -349,6 +350,13 @@ def release_job_lock():
 FILE_LOCK = threading.Lock()  # history.json / lists.json
 GEOCODE_LOCK = threading.Lock()
 _last_geocode = [0.0]
+# OpenStreetMap (Nominatim) blocks a computer that asks too much (HTTP 429/629). Then: no requests for a
+# while (shared with the family-page build through this file), and count the failures.
+GEOCODE_COOLDOWN_FILE = WORK_DIR / "geocode_cooldown.txt"
+GEOCODE_COOLDOWN_SECONDS = 600
+GEO_STATE = {"failures": 0}
+CURRENT_JOB = threading.local()  # .id = the search this thread works for (so a long lookup loop obeys Stop)
+APPROX_GEO_FILE = WORK_DIR / "geocode_approx.json"  # addresses put at their town centre while the map was down
 
 
 # ---------------------------------------------------------------------------
@@ -916,14 +924,23 @@ def _nominatim(cache_key, params, with_name=False):
     with_name=True returns [lat, lon, display_name] (to check which town the hit is in)."""
     if with_name:
         cache_key = "named:" + cache_key
+    job = getattr(CURRENT_JOB, "id", None)
+    if job:
+        with JOBS_LOCK:
+            if JOBS.get(job, {}).get("stop_requested"):
+                raise JobStopped()  # re-locating dozens of branches takes minutes: Stop must not wait for it
     with GEOCODE_LOCK:
         ui_cache = _read_json(UI_GEOCODE_FILE, {})
         if cache_key in ui_cache:
             return ui_cache[cache_key]
+        if geocode_blocked():
+            GEO_STATE["failures"] += 1
+            return None
         wait = 1.1 - (time.time() - _last_geocode[0])
         if wait > 0:
             time.sleep(wait)
-        query = urllib.parse.urlencode({**params, "format": "json", "limit": 1, "countrycodes": "il"})
+        # countrycodes "il" by default; Judea and Samaria are filed under "ps" in OpenStreetMap ("il,ps")
+        query = urllib.parse.urlencode({"countrycodes": "il", **params, "format": "json", "limit": 1})
         req = urllib.request.Request(
             f"https://nominatim.openstreetmap.org/search?{query}",
             headers={"User-Agent": "il-supermarket-compare-local-ui/1.0"},
@@ -936,13 +953,125 @@ def _nominatim(cache_key, params, with_name=False):
                 coords = [float(hits[0]["lat"]), float(hits[0]["lon"])]
                 if with_name:
                     coords.append(str(hits[0].get("display_name") or ""))
+        except urllib.error.HTTPError as exc:
+            GEO_STATE["failures"] += 1
+            if exc.code in (403, 418, 429, 503, 509) or exc.code >= 600:
+                _write_text_safe(GEOCODE_COOLDOWN_FILE, str(time.time() + GEOCODE_COOLDOWN_SECONDS))
+            return None  # refused / blocked: don't cache
         except (OSError, ValueError, KeyError):
+            GEO_STATE["failures"] += 1
             return None  # network problem: don't cache
         finally:
             _last_geocode[0] = time.time()
         ui_cache[cache_key] = coords
         UI_GEOCODE_FILE.write_text(json.dumps(ui_cache, ensure_ascii=False), encoding="utf-8")
         return coords
+
+
+def _write_text_safe(path, text):
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+
+
+def geocode_blocked():
+    """True while OpenStreetMap is refusing this computer (set after a 429/629 answer)."""
+    try:
+        return time.time() < float(GEOCODE_COOLDOWN_FILE.read_text(encoding="utf-8").strip() or 0)
+    except (OSError, ValueError):
+        return False
+
+
+def geocode_service_ok():
+    """One uncached probe: does OpenStreetMap answer right now?"""
+    if geocode_blocked():
+        return False
+    # a real search: when blocked, /status still answers but /search doesn't
+    req = urllib.request.Request("https://nominatim.openstreetmap.org/search?q=Jerusalem&format=json&limit=1",
+                                 headers={"User-Agent": "il-supermarket-compare-local-ui/1.0"})
+    try:
+        with GEOCODE_LOCK:
+            wait = 1.1 - (time.time() - _last_geocode[0])
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    return bool(json.loads(resp.read().decode("utf-8")))
+            finally:
+                _last_geocode[0] = time.time()
+    except urllib.error.HTTPError as exc:
+        if exc.code in (403, 418, 429, 503, 509) or exc.code >= 600:
+            _write_text_safe(GEOCODE_COOLDOWN_FILE, str(time.time() + GEOCODE_COOLDOWN_SECONDS))
+        return False
+    except (OSError, ValueError):
+        return False
+
+
+def town_centre_offline(address):
+    """[lat, lon, name] of the town named in the address, from data we already have (the family page's
+    locality list, then earlier town lookups) - works when the map service doesn't."""
+    town = address.rsplit(",", 1)[-1].strip()
+    want = _loose(town)
+    if not want:
+        return None
+    places = _read_json(BASE_DIR / "site" / "data" / "places.json", [])
+    for exact in (True, False):  # "תל אביב" -> "תל אביב - יפו", "מודיעין" -> "מודיעין-מכבים-רעות"
+        for p in sorted(places, key=lambda p: len(p.get("n", ""))):
+            n = _loose(p.get("n"))
+            if n and p.get("la") and (n == want if exact else n.startswith(want)):
+                return [p["la"], p["lo"], p["n"]]
+    ui = _read_json(UI_GEOCODE_FILE, {})
+    xy = ui.get(f"settlement:{town}")
+    return [xy[0], xy[1], town] if xy else None
+
+
+def prime_geocode(address):
+    """find_stores.py (vendor) remembers a failed lookup forever: when OpenStreetMap is down or blocks
+    this computer, a real address becomes "could not geocode" for good. Before each run, fill its cache
+    entry from our own lookup (which never stores failures); when the map is unavailable, from the town
+    centre, remembered as approximate so it is looked up again later. Returns a note for the user or None."""
+    cache_file = CACHE_DIR / "geocode.json"
+    approx = _read_json(APPROX_GEO_FILE, {})
+    plugin = _read_json(cache_file, {})
+    if plugin.get(address) and address not in approx:
+        return None
+    xy, note = _nominatim(address, {"q": address}), None
+    if xy:
+        approx.pop(address, None)
+    else:
+        t = town_centre_offline(address)
+        if not t:
+            return None
+        xy = t[:2]
+        approx[address] = t[2]
+        note = (f"המיקום המדויק של הכתובת לא אותר כרגע (שירות המפות לא זמין או שהכתובת לא מוכרת), "
+                f"ולכן המרחקים נמדדו ממרכז {t[2]}.")
+    with GEOCODE_LOCK:
+        plugin = _read_json(cache_file, {})
+        plugin[address] = [xy[0], xy[1]]
+        _write_text_safe(cache_file, json.dumps(plugin, ensure_ascii=False))
+        _write_text_safe(APPROX_GEO_FILE, json.dumps(approx, ensure_ascii=False))
+    return note
+
+
+def vendor_geo_nulls():
+    return {k for k, v in _read_json(CACHE_DIR / "geocode.json", {}).items() if v is None}
+
+
+def forget_failed_vendor_lookups(before):
+    """After a vendor run: lookups it stored as "not found" while OpenStreetMap was refusing us are not
+    real answers - remove them so they are tried again next time."""
+    new = vendor_geo_nulls() - before
+    if not new or geocode_service_ok():
+        return 0
+    with GEOCODE_LOCK:
+        cache = _read_json(CACHE_DIR / "geocode.json", {})
+        for k in new:
+            if cache.get(k, 0) is None:
+                cache.pop(k)
+        _write_text_safe(CACHE_DIR / "geocode.json", json.dumps(cache, ensure_ascii=False))
+    return len(new)
 
 
 def geocode_address(address):
@@ -965,7 +1094,8 @@ def _latest_cache_file(pattern):
     return files[-1] if files else None
 
 
-NOT_SUPERMARKET_RE = re.compile(r"\bBE\b|אונליין|online|@|https?://", re.I)
+# not a shop you walk into: Shufersal BE (beauty/pharmacy, "BE61"), online-order picking centres ("ליקוט")
+NOT_SUPERMARKET_RE = re.compile(r"\bBE\d*\b|אונליין|online|ליקוט|@|https?://", re.I)
 
 
 # ---------------------------------------------------------------------------
@@ -1266,6 +1396,17 @@ def track_event(job_id, event):
                     break
         elif name == "StructuredOutput":
             set_step(job_id, "answer", "מסכם את התוצאה")
+
+
+def wait_for_stopping_jobs(seconds=15):
+    """A search that was just stopped ends at its current step: give it a moment before saying "busy"."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        with JOBS_LOCK:
+            running = [job for job in JOBS.values() if job["status"] == "running"]
+        if not running or not all(job.get("stop_requested") for job in running):
+            return
+        time.sleep(0.3)
 
 
 def stop_job(job_id):
@@ -1767,10 +1908,17 @@ def fast_find_stores(job_id, plan, env, chains_arg):
     for i, address in enumerate(dict.fromkeys(forms)):
         if i:
             notes.append(f'הכתובת לא אותרה במפה, חיפשתי לפי "{address}".')
+        approx_note = prime_geocode(address)
+        if approx_note:
+            notes.append(approx_note)
         for radius in radii:
             query = radius if loc["mode"] == "cities" else radius + LOCATE_SLACK_KM
+            before = vendor_geo_nulls()
             code, out, err = _script(job_id, [SCRIPTS_DIR / "find_stores.py", address, "--radius", f"{query:g}",
                                               "--chains", chains_arg], env, timeout=3600)
+            purged = forget_failed_vendor_lookups(before)
+            if purged:
+                _job_log(job_id, f"map service refused us: {purged} failed store lookups will be retried later")
             if "could not geocode" in out + err:
                 break
             if code != 0:
@@ -2654,6 +2802,7 @@ def fast_pick(job_id, items, chosen, cands, table, prof=None, only=None):
 
 
 def run_job(job_id, plan):
+    CURRENT_JOB.id = job_id
     started_at = time.time()
     with JOBS_LOCK:
         JOBS[job_id]["started_at"] = started_at
@@ -2816,12 +2965,37 @@ def run_job(job_id, plan):
 # ---------------------------------------------------------------------------
 class LocalServer(ThreadingHTTPServer):
     daemon_threads = True
+    request_queue_size = 128  # the default 5 refuses connections when a page asks for many files at once
     # On Windows SO_REUSEADDR lets a second process bind a port that is already in use
     # (requests then go to either server), so keep the bind exclusive there.
     allow_reuse_address = os.name != "nt"
 
 
+SERVER_LOG = WORK_DIR / "server.log"
+SERVER_LOG_MAX = 5 * 1024 * 1024
+
+
+def quiet_console():
+    """After the start-up lines, nothing more is written to the console window: when the window is frozen
+    (a click in it, a minimized/hidden console nobody reads) every write blocks, and the whole server with
+    it (reproduced: no answers after ~140 requests). Everything goes to .il-supermarket-work/server.log."""
+    try:
+        if SERVER_LOG.exists() and SERVER_LOG.stat().st_size > SERVER_LOG_MAX:
+            SERVER_LOG.replace(SERVER_LOG.with_suffix(".old.log"))
+        f = open(SERVER_LOG, "a", encoding="utf-8", buffering=1)
+    except OSError:
+        f = open(os.devnull, "w", encoding="utf-8")
+    sys.stdout = sys.stderr = f
+
+
 class Handler(BaseHTTPRequestHandler):
+    timeout = 120  # a connection that sends nothing doesn't hold a thread forever
+
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, TimeoutError):
+            pass  # the browser closed the connection (page closed, download cancelled): nothing to do
     server_version = "SupermarketCompare/2.0"
 
     def _send_json(self, status, data):
@@ -3004,6 +3178,7 @@ class Handler(BaseHTTPRequestHandler):
             )
         if data.get("replace") is True:  # "stop the previous search and start this one" (any window)
             stop_everywhere()
+        wait_for_stopping_jobs()
         with JOBS_LOCK:
             if any(job["status"] == "running" for job in JOBS.values()):
                 raise BadRequest("כבר מתבצעת השוואה. יש להמתין לסיומה או לעצור אותה.", 409)
@@ -3011,7 +3186,7 @@ class Handler(BaseHTTPRequestHandler):
         plan, request = build_plan(data)  # may run the no-tools parse step
         if data.get("replace") is True:  # a search that started while this request was being parsed
             stop_everywhere()
-
+        wait_for_stopping_jobs()
         with JOBS_LOCK:
             if any(job["status"] == "running" for job in JOBS.values()):
                 raise BadRequest("כבר מתבצעת השוואה. יש להמתין לסיומה או לעצור אותה.", 409)
@@ -3209,6 +3384,9 @@ def main():
     url = f"http://127.0.0.1:{server.server_address[1]}"
     print(f"השרת פועל בכתובת {url}")
     print("לסיום, סגור את החלון או לחץ Ctrl+C.")
+    print(f"יומן השרת: {SERVER_LOG}")
+    sys.stdout.flush()
+    quiet_console()
     if not os.environ.get("SUPERMARKET_NO_BROWSER"):
         try:
             webbrowser.open(url)
