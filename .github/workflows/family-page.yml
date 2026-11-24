@@ -7,6 +7,14 @@ on:
   schedule:
     - cron: "15 4 * * *"   # 04:15 UTC = 06:15 Israel (winter) / 07:15 (summer)
   workflow_dispatch: {}    # "Run workflow" button for an update on demand
+  push:                    # a code / product-decisions update refreshes the page right away
+    branches: [main]
+    paths:
+      - "family/**"
+      - "app.py"
+      - "fresh_prices.py"
+      - "ext/**"
+      - ".github/workflows/family-page.yml"
 
 permissions:
   contents: read
