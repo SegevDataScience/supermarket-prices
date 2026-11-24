@@ -7,6 +7,7 @@ products already decided on the PC are compared) and write a static page + Excel
 The address is used for the search only; it never appears on the page.
 """
 import html
+import re
 import json
 import os
 import sys
@@ -155,6 +156,25 @@ def main():
             (SITE / f"list{n}-{kind}.xlsx").write_bytes(data)
     stamp = datetime.now().strftime("%d.%m.%Y %H:%M")
     (SITE / "index.html").write_text(render(jobs, titles, stamp), encoding="utf-8")
+    # Run diagnostics (no address): which chains failed and why, readable at <page>/status.txt
+    lines = [f"run {stamp}"]
+    for job, title in zip(jobs, titles):
+        j = app.JOBS.get(job["id"], {})
+        cov = job["result"].get("coverage") or {}
+        lines += [f"== {title}", f"stores compared: {len(job['result'].get('stores') or [])}",
+                  f"chains: {', '.join(cov.get('chains_checked') or [])}",
+                  "failed: " + "; ".join(f"{x.get('chain')}: {x.get('reason')}" for x in cov.get("chains_skipped_or_failed") or []),
+                  "extra chains (store lists):", str(j.get("extra_stores_log", ""))[-1500:]]
+        log = app.WORK_DIR / f"job-{job['id']}.log"
+        if log.exists():
+            keep = [ln for ln in log.read_text(encoding="utf-8", errors="replace").splitlines()
+                    if re.search(r"^(ok|FAIL)\s|warning|stores within|outside the radius|Traceback|Error", ln)]
+            lines += ["log:"] + keep[-80:]
+    addr = {e["address"] for e in cfg["lists"]}
+    text = "\n".join(lines)
+    for a in addr:
+        text = text.replace(a, "<address>")
+    (SITE / "status.txt").write_text(text, encoding="utf-8")
     print(f"page: {SITE / 'index.html'}")
 
 
