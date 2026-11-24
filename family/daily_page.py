@@ -623,7 +623,7 @@ def main():
                   "כך שייתכן שהסל הכי זול שונה.")
         if last.get("stamp"):
             notice += f" העדכון המלא האחרון: {last['stamp']}."
-    (SITE / "index.html").write_text(render(jobs, titles, stamp, notice), encoding="utf-8")
+    (SITE / "index.html").write_bytes(render(jobs, titles, stamp, notice).encode("utf-8"))  # LF, byte-identical to GitHub
     # Run diagnostics (no address): which chains failed and why, readable at <page>/status.txt
     lines = [f"run {stamp}"]
     for job, title in zip(jobs, titles):
